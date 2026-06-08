@@ -1,0 +1,10 @@
+services:
+  ai_service:
+    model: "deepseek"
+    security_enabled: true
+    logging_level: debug
+
+ai_models:
+  - name: local_deepseek
+    path: /path/to/deepseek/model
+    type: local
