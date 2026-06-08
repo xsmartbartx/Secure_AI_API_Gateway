@@ -120,6 +120,7 @@ spec:
   }
 }
 
+<<<<<<< HEAD
 # These routes would be created programmatically using Kong's admin API or stored as Kubernetes ConfigMaps
 
 # Secure AI API Gateway with IAM using Kong Ingress Controller
@@ -269,3 +270,6 @@ metrics:
     description: Failed authentication attempts
 
 logging_level: info
+=======
+# These routes would be created programmatically using Kong's admin API or stored as Kubernetes ConfigMaps
+>>>>>>> c5508390954ff2c7dcd5abb4659d0252d32d8c57
