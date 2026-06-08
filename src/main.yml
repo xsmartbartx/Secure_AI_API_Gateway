@@ -121,3 +121,151 @@ spec:
 }
 
 # These routes would be created programmatically using Kong's admin API or stored as Kubernetes ConfigMaps
+
+# Secure AI API Gateway with IAM using Kong Ingress Controller
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: secure-ai-iam-service
+spec:
+  selector:
+    app: secure-ai-iam
+  ports:
+    - protocol: TCP
+      port: 8080
+
+---
+
+kind: Deployment
+metadata:
+  name: secure-ai-iam-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-ai-iam
+  template:
+    metadata:
+      labels:
+        app: secure-ai-iam
+    spec:
+      containers:
+        - name: kong
+          image: kong:latest
+          env:
+            - name: KONG_LOG_LEVEL
+              value: "info"
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: "/dev/stdout"
+            - name: KONG_ADMIN_ERROR_LOG
+              value: "/dev/stderr"
+            - name: KONG_PROXY_ACCESS_LOG
+              valueFrom:
+                configMapRef:
+                  name: iam-configmap
+                  key: proxy.access.log
+            - name: KONG_BASE_URL
+              value: "http://secure-ai-api-service.default.svc.cluster.local:8000"
+
+      # Add RBAC configuration for Kubernetes services
+
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 2000
+
+---
+
+# Example IAM policy definition using Rego (Open Policy Agent)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iam-configmap
+data:
+  # opa.rego for RBAC policies
+  rbac.rego: |
+    package secure.iam
+
+    # Define roles and their permissions
+    role_mapping = {
+      "user": ["basic_inference"],
+      "analyst": ["internal_data_access"],
+      "developer": ["model_testing", "deployment"],
+      "admin": ["full_access"]
+    }
+
+    # Check if user has permission for a given action
+    default allow = false
+
+    allow[input.user.role == r] {
+      roles = {for role in data.iam.roles : role | {role}}
+      r = to_lower(role_mapping[role])
+    }
+
+---
+
+# Example OIDC configuration (JSON format)
+
+{
+  "name": "oidc-auth",
+  "methods": ["GET", "POST"],
+  "uri": "/auth/oidc/*",
+  "plugins": {
+    "openid-connect": {
+      "client_id": "${KEYCLOAK_CLIENT_ID}",
+      "client_secret": "${KEYCLOAK_CLIENT_SECRET}",
+      "authorization_request_method": "auto",
+      "response_type": "code token id_token"
+    }
+  },
+  "route_target_override": "oidc-service"
+}
+
+---
+
+# Example JWT validation plugin configuration
+
+{
+  "name": "jwt-validation",
+  "methods": ["GET", "POST"],
+  "uri": "/secure/*",
+  "plugins": {
+    "custom-jwt": {
+      "secret": "${JWT_SECRET_KEY}",
+      "attribute_name": "groups",
+      "allowed_groups": ["internal-users"]
+    }
+  },
+  "enabled": true
+}
+
+---
+
+# mTLS configuration example (Kong plugin)
+
+{
+  "name": "mtls-encryption",
+  "methods": ["POST"],
+  "uri": "/secure/inference/*",
+  "plugins": {
+    "mTLS": {
+      "client_certificate": "required"
+    }
+  },
+  "enabled": true
+}
+
+---
+
+# Monitoring configuration for IAM
+
+metrics:
+  - name: iam_requests_total
+    type: counter
+    description: Total requests to IAM service
+  - name: iam_auth_failures
+    type: counter
+    description: Failed authentication attempts
+
+logging_level: info
