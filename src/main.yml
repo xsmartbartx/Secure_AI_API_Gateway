@@ -1,0 +1,123 @@
+# Secure AI API Gateway using Kong Ingress Controller
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: secure-ai-api-service
+  labels:
+    app: secure-ai-gateway
+spec:
+  type: LoadBalancer
+  selector:
+    kong-ingress-class: true
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+
+---
+
+kind: Deployment
+metadata:
+  name: secure-ai-api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-ai-gateway
+  template:
+    metadata:
+      labels:
+        app: secure-ai-gateway
+    spec:
+      containers:
+        - name: kong
+          image: kong:latest
+          env:
+            - name: KONG_PG_HOST
+              value: "secure-ai-db"
+            - name: KONG_PG_PORT
+              value: "5432"
+            - name: KONG_PG_USER
+              valueFrom:
+                configMapRef:
+                  name: kong-config
+                  key: database.user
+            - name: KONG_PG_PASSWORD
+              valueFrom:
+                configMapRef:
+                  name: kong-config
+                  key: database.password
+          ports:
+            - containerPort: 8000
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: secure-ai-ingress
+spec:
+  rules:
+    - host: api.secure-ai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: secure-ai-api-service
+                port:
+                  number: 8000
+
+---
+
+# API Route definitions for Kong Gateway
+# These are separate configurations that would be managed through Kong's admin API or declarative configuration
+
+# Example route definition (JSON format):
+{
+  "name": "openai-proxy",
+  "methods": ["GET", "POST"],
+  "uri": "/v1/engines/davinci/edit",
+  "plugins": {
+    "acl': { 
+      'enable': true,
+      'whitelist': ['admin', 'trusted-dev'] 
+    },
+    "prometheus': { 
+      'enable': true
+    }
+  },
+  "route_target_override": "openai-proxy-service",
+  "retries_enabled": true,
+  "response_buffering_size": 1048576
+}
+
+# Similarly for other services:
+{
+  "name": "azure-openai-route",
+  "methods": ["GET", "POST"],
+  "uri": "/v1/deployments/ada-002/embeddings",
+  "plugins": {
+    "waf': { 
+      'enable': true,
+      'policy': 'secure-ai-waf'
+    },
+    "rate_limiting': { ... }
+  }
+},
+{
+  "name": "claude-route",
+  "methods": ["GET", "POST"],
+  "uri": "/v1/complete",
+  "plugins": {
+    "dlp': { 
+      'enable': true,
+      'sensitivity_level': 'high'
+    },
+    "audit_log': { ... }
+  }
+}
+
+# These routes would be created programmatically using Kong's admin API or stored as Kubernetes ConfigMaps
