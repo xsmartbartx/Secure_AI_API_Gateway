@@ -11,3 +11,8 @@ class UnifiedChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., description="Sequential structured chat conversation payload array")
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0)
+
+class ChatChoice(BaseModel):
+    index: int
+    message: ChatMessage
+    finish_reason: Optional[str] = None
