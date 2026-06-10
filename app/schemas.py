@@ -21,3 +21,10 @@ class UsageInfo(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+
+class UnifiedChatResponse(BaseModel):
+    id: str
+    provider: str
+    model: str
+    choices: List[ChatChoice]
+    usage: UsageInfo
