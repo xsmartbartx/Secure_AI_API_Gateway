@@ -16,3 +16,8 @@ class ChatChoice(BaseModel):
     index: int
     message: ChatMessage
     finish_reason: Optional[str] = None
+
+class UsageInfo(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
