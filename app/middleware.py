@@ -43,3 +43,17 @@ class GatewaySecurityMiddleware(BaseHTTPMiddleware):
         # 2. Key-Identified Operational Rate Control Boundary Check
         if not rate_limiter.verify_and_consume(client_key):
             return Response(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content="Rate limit threshold violation. Slow down requests.")
+        
+        # 3. Telemetry Log Capture Tracking Round-Trip Runtime Performance
+        start_time = time.time()
+        logger.info(f"Route Call: path={request.url.path} method={request.method} key_id=...{client_key[-6:]}")
+        
+        try:
+            response = await call_next(request)
+            execution_delay = time.time() - start_time
+            logger.info(f"Route Done: status={response.status_code} latency={execution_delay:.4f}s")
+            return response
+        except Exception as error:
+            execution_delay = time.time() - start_time
+            logger.error(f"Route Failure: error={str(error)} latency={execution_delay:.4f}s")
+            return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Gateway execution anomaly.")
