@@ -35,3 +35,11 @@ class GatewaySecurityMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return Response(status_code=status.HTTP_401_UNAUTHORIZED, content="Malformed/Missing Gateway Bearer authorization token.")
+        
+        client_key = auth_header.split(" ")[1]
+        if client_key not in settings.valid_keys:
+            return Response(status_code=status.HTTP_403_FORBIDDEN, content="Forbidden: Provided Gateway API access key is rejected.")
+
+        # 2. Key-Identified Operational Rate Control Boundary Check
+        if not rate_limiter.verify_and_consume(client_key):
+            return Response(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content="Rate limit threshold violation. Slow down requests.")
