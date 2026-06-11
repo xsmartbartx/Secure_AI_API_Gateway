@@ -24,3 +24,14 @@ class InMemorySlidingRateLimiter:
         return False
 
 rate_limiter = InMemorySlidingRateLimiter(settings.RATE_LIMIT_PER_MINUTE)
+
+class GatewaySecurityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Expose baseline discovery metrics and automatic OpenAPI specification documentation UI
+        if request.url.path in ["/docs", "/openapi.json", "/health", "/redoc"]:
+            return await call_next(request)
+        
+        # 1. Verification of Client-Facing Access Token Credentials
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return Response(status_code=status.HTTP_401_UNAUTHORIZED, content="Malformed/Missing Gateway Bearer authorization token.")
