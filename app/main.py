@@ -11,3 +11,9 @@ app = FastAPI(
 )
 # Wire core security and routing middleware hooks
 app.add_middleware(GatewaySecurityMiddleware)
+
+# Initialize functional downstream multi-provider model routing drivers
+provider_registry = {
+    "openai": OpenAIAdapter(),
+    "anthropic": AnthropicAdapter()
+}
