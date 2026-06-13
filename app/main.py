@@ -9,4 +9,5 @@ app = FastAPI(
     description="Unified request mapping engine and token safety abstraction layer.",
     version="1.0.0"
 )
-# Add middleware to secure the gateway
+# Wire core security and routing middleware hooks
+app.add_middleware(GatewaySecurityMiddleware)
