@@ -1,0 +1,39 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    ENV: str = "dev"  # dev | prod
+    DATABASE_URL: str = "sqlite+aiosqlite:///./gateway.db"
+
+    # Upstream provider credentials (platform default; per-org vault comes later)
+    ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    # In dev with no upstream key, answer from a built-in mock so the full loop is testable
+    ALLOW_MOCK_UPSTREAM: bool = True
+
+    # Control-plane auth (NEXORA account SSO). JWKS URL + issuer verify session JWTs in prod.
+    AUTH_JWKS_URL: str = ""
+    AUTH_ISSUER: str = ""
+    # Dev only: trust X-Dev-Org / X-Dev-User headers. Ignored when ENV=prod.
+    DEV_AUTH: bool = True
+
+    REDIS_URL: str = ""  # empty = in-memory limiter (dev/tests only)
+
+    # Stripe (test keys until deploy). Empty = billing disabled.
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_STARTER: str = ""
+    APP_URL: str = "http://localhost:3000"
+
+    CORS_ORIGINS: str = "http://localhost:3000,https://gateway.onenexora.com"
+    DEFAULT_RPM: int = 60
+    FREE_MONTHLY_QUOTA: int = 100
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def cors_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+
+settings = Settings()
