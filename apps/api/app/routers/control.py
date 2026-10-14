@@ -1,11 +1,15 @@
+import csv
 import datetime as dt
+import io
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import ApiKey, RequestLog, SecurityEvent, get_session
+from app.db import engine, ApiKey, RequestLog, SecurityEvent, get_session
 from app.deps import Principal, month_start, require
 from app.errors import GatewayError
 from app.keys import generate_key
@@ -127,18 +131,61 @@ async def overview(days: int = Query(7, ge=1, le=90), p: Principal = Depends(req
     }
 
 
+def _csv_cell(v) -> str:
+    """Spreadsheet formula injection: a key or model name like =HYPERLINK(...) must not run when the CSV is opened."""
+    v = str(v)
+    return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+
+
 @router.get("/usage")
-async def usage(days: int = Query(30, ge=1, le=90), p: Principal = Depends(require("viewer")),
-                s: AsyncSession = Depends(get_session)):
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
-    rows = (await s.execute(select(RequestLog).where(RequestLog.org_id == p.org.id, RequestLog.ts >= since))).scalars().all()
-    by_model: dict[str, dict] = {}
-    for r in rows:
-        m = by_model.setdefault(r.model or "unknown", {"model": r.model or "unknown", "calls": 0, "tokens_in": 0, "tokens_out": 0})
-        m["calls"] += 1
-        m["tokens_in"] += r.tokens_in
-        m["tokens_out"] += r.tokens_out
-    return {"by_model": sorted(by_model.values(), key=lambda x: -x["calls"])}
+async def usage(from_: dt.date | None = Query(None, alias="from"), to: dt.date | None = None,
+                group: Literal["key", "model", "day"] = "key", format: Literal["json", "csv"] = "json",
+                p: Principal = Depends(require("viewer")), s: AsyncSession = Depends(get_session)):
+    """Usage between two UTC dates (inclusive), grouped by key, model or day. Default: the last 30 days."""
+    to = to or dt.datetime.now(dt.timezone.utc).date()
+    from_ = from_ or to - dt.timedelta(days=29)
+    if from_ > to:
+        raise GatewayError(422, "invalid_range", "'from' must not be after 'to'.")
+    if (to - from_).days > 366:
+        raise GatewayError(422, "invalid_range", "The range can be at most 366 days.")
+    start = dt.datetime.combine(from_, dt.time.min, dt.timezone.utc)
+    end = dt.datetime.combine(to + dt.timedelta(days=1), dt.time.min, dt.timezone.utc)
+
+    # Postgres buckets timestamptz in the session time zone unless told otherwise; days here are UTC days.
+    day = func.date(func.timezone("UTC", RequestLog.ts)) if engine.dialect.name == "postgresql" else func.date(RequestLog.ts)
+    dim = {"key": RequestLog.key_id, "model": func.coalesce(RequestLog.model, "unknown"), "day": day}[group]
+    q = (select(dim.label("dim"), func.count().label("calls"),
+                func.sum(case((RequestLog.decision == "block", 1), else_=0)).label("blocked"),
+                func.sum(case((RequestLog.decision == "error", 1), else_=0)).label("errors"),
+                func.sum(RequestLog.tokens_in).label("tin"), func.sum(RequestLog.tokens_out).label("tout"))
+         .where(RequestLog.org_id == p.org.id, RequestLog.ts >= start, RequestLog.ts < end).group_by("dim"))  # by label: a bind-parameter expression repeated in GROUP BY is rejected by Postgres
+    raw = (await s.execute(q)).all()
+
+    keys = {}
+    if group == "key":
+        keys = {k.id: k for k in (await s.execute(select(ApiKey).where(ApiKey.org_id == p.org.id))).scalars()}
+    rows = []
+    for r in raw:
+        row = {"id": r.dim if group == "key" else None, "label": str(r.dim), "calls": r.calls, "blocked": int(r.blocked or 0),
+               "errors": int(r.errors or 0), "tokens_in": int(r.tin or 0), "tokens_out": int(r.tout or 0)}
+        if group == "key":
+            k = keys.get(r.dim)
+            row["label"] = k.name if k else ("Playground" if r.dim is None else "Deleted key")
+            row["prefix"] = f"{k.prefix}…{k.last4}" if k else None
+            row["revoked"] = bool(k and k.revoked_at)
+        rows.append(row)
+    rows.sort(key=(lambda x: x["label"]) if group == "day" else (lambda x: -x["calls"]))
+    totals = {f: sum(r[f] for r in rows) for f in ("calls", "blocked", "errors", "tokens_in", "tokens_out")}
+
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["label", "calls", "blocked", "errors", "tokens_in", "tokens_out"])
+        for r in rows:
+            w.writerow([_csv_cell(r["label"]), r["calls"], r["blocked"], r["errors"], r["tokens_in"], r["tokens_out"]])
+        return Response(buf.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="usage-{group}-{from_}-{to}.csv"'})
+    return {"from": from_.isoformat(), "to": to.isoformat(), "group": group, "rows": rows, "totals": totals}
 
 
 @router.get("/security-events")

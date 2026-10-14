@@ -8,7 +8,7 @@ Overview KPIs + charts,dashboard,must,no,yes,
 API key create/reveal-once/revoke/rotate,dashboard,must,partial,yes,keys via Console today; hash at rest
 Playground,dashboard,must,yes,yes,exists at /app
 Request logs + detail drawer,dashboard,must,partial,yes,Console > Usage today
-Usage and cost per key/model,dashboard,must,partial,partial,"by model only; no cost, no per-key"
+Usage and cost per key/model,dashboard,must,partial,yes,"per key / model / day, date range (UTC, max 366d), totals, CSV export; no cost estimate by design (provider invoice is source of truth)"
 Onboarding checklist,dashboard,should,no,partial,empty-state CTA only; stepper todo
 Billing + upgrade (Stripe),billing,must,partial,partial,checkout/portal/webhooks coded + tested with signed fakes; needs Stripe test keys
 Unified chat endpoint /v1/chat,api,must,yes,yes,Anthropic-shaped

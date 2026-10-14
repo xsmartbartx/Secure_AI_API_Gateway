@@ -65,3 +65,20 @@ export async function apiStream(path: string, body: unknown, onDelta: (t: string
   }
   return { usage, model }
 }
+
+/** Download an authenticated endpoint (e.g. CSV) through a temporary link. */
+export async function apiDownload(path: string, fallbackName: string) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders(), cache: 'no-store' })
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, b?.error?.code ?? 'error', b?.error?.message ?? res.statusText)
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = Object.assign(document.createElement('a'), { href: url, download: name })
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export type UsageRow = { id: string | null; label: string; prefix?: string | null; revoked?: boolean; calls: number; blocked: number; errors: number; tokens_in: number; tokens_out: number }
+export type Usage = { from: string; to: string; group: 'key' | 'model' | 'day'; rows: UsageRow[]; totals: Omit<UsageRow, 'id' | 'label'> }

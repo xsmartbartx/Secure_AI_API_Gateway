@@ -58,3 +58,12 @@ Found by reading the public sign-in page: account.onenexora.com is a **Clerk pro
 - Tests (37 total pass): shape + logging, OpenAI route, preflight errors stay JSON, quota counting, refusal before first byte, mid-stream failure, disconnect (generator closed -> one 499 row), playground, and adapter parsing against canned upstream SSE (Anthropic, OpenAI, HTTP error, in-stream error). Verified over real HTTP with curl (chunks arrive 400 ms apart; a client abort logs 499) and in the browser (playground streams, Stop button works).
 - **Not verified against the real Anthropic/OpenAI APIs** (no keys here); parsing follows their documented event formats.
 - Not done: tool calls / non-text content blocks are ignored in streams; no heartbeat comments for idle proxies; no cost estimate.
+
+## Usage per key (2026-10-14)
+- `GET /api/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&group=key|model|day[&format=csv]`: SQL aggregation (not row loading) of calls, blocked, errors, tokens in/out per key, model or UTC day, plus totals. Default: last 30 days. Range is inclusive, `from <= to`, max 366 days, 422 `invalid_range` otherwise. Org-scoped, viewer+.
+- Unattributed calls (playground, or a deleted key) are grouped under "Playground", never dropped, so totals always equal the sum of rows. Revoked keys keep their history and are marked.
+- CSV neutralises spreadsheet-formula injection (a key named `=HYPERLINK(...)` is exported as `'=HYPERLINK(...)`).
+- Postgres-safety: grouped by label (bind-parameter expressions repeated in GROUP BY are rejected by Postgres) and UTC day bucketing via `timezone('UTC', ts)`; compiled for the Postgres dialect but **not run against a real Postgres**.
+- Web (`/app/usage`): By key / By model / By day, date range with 7/30/90-day presets, totals row, daily chart with empty days shown as gaps, CSV download, empty/error/invalid-range states.
+- Tests: 7 new (44 total): grouping, inclusive ranges, validation, org isolation, unattributed calls, CSV. Checked in the browser against seeded data.
+- Still no cost: token counts only. Reads live from `request_logs`; add the `usage_daily` rollup when an org passes ~1M rows.
