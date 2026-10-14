@@ -8,7 +8,7 @@ const rows = [
   ['Prompts and responses', 'Not stored. A hash of the prompt is kept so repeated requests can be recognized.', 'Prompt text is never written'],
   ['Request log', 'Time, model, provider, token counts, latency, status, decision, request ID.', 'Free 7 days, Starter 30 days, deleted within a day after that'],
   ['Daily usage counts', 'Calls, blocked, errors and token counts per day, key and model. No content, no prompts.', 'Until you delete the organization'],
-  ['Provider credentials', 'Held server-side by NEXORA for the configured upstream provider. Never returned to callers.', 'While the service is configured'],
+  ['Provider keys you add', 'Checked with the provider, then encrypted at rest (AES-256-GCM). Never returned by the API or shown again, only the last four characters. Without one, calls use the shared key NEXORA configures.', 'Until you remove the key or delete the organization'],
   ['Account and organization', 'Managed by NEXORA account. Gateway stores an organization ID, member roles and member emails.', 'Until the organization or the account is deleted'],
   ['Billing records', 'Held by our payment provider (Stripe) as required for accounting. Gateway keeps only Stripe reference IDs.', 'As required by accounting law'],
 ]

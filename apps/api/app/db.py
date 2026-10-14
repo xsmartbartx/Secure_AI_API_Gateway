@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, TypeDecorator, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, TypeDecorator, UniqueConstraint, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -118,6 +118,21 @@ class StripeEvent(Base):
     __tablename__ = "stripe_events"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     received_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
+
+
+class ProviderConnection(Base):
+    """An organization's own model-provider API key. The key is encrypted (AES-GCM, bound to this row) and never returned by the API."""
+    __tablename__ = "provider_connections"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String)  # anthropic | openai
+    label: Mapped[str] = mapped_column(String)
+    credential_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    hint: Mapped[str] = mapped_column(String)  # "…" + last 4 characters, to tell keys apart
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String, default="untested")  # untested | ok | failing
+    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
+    __table_args__ = (Index("one_default_provider_per_org", "org_id", unique=True, sqlite_where=text("is_default"), postgresql_where=text("is_default")),)
 
 
 class UsageDaily(Base):

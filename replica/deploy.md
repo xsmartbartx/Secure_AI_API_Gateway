@@ -36,6 +36,7 @@
 | Redis | Upstash | `REDIS_URL` |
 | upstream | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` as host secrets | live keys only in the host |
 | CORS | `CORS_ORIGINS=https://gateway.onenexora.com` | remove localhost in prod |
+| Provider-key encryption | `CREDENTIAL_ENCRYPTION_KEY` (32 random bytes, base64) as a host secret | required in prod (boot fails without it); store a copy in your password manager: losing it makes saved customer keys unreadable |
 | Stripe | live mode: recreate Starter price, webhook `https://api.onenexora.com/webhooks/stripe`, set `STRIPE_*`; one real purchase + refund | API rejects `sk_test_` in prod |
 
 ## DNS (at your registrar for onenexora.com; values come from each host's domain screen)

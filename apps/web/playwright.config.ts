@@ -26,7 +26,7 @@ export default defineConfig({
       env: {
         DATABASE_URL: 'sqlite+aiosqlite:///./e2e.db', ENV: 'dev', DEV_AUTH: 'true', ALLOW_MOCK_UPSTREAM: 'true',
         ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', STRIPE_SECRET_KEY: '', MOCK_STREAM_DELAY_MS: '150',
-        RETENTION_JOB_ENABLED: 'false', CORS_ORIGINS: WEB,
+        RETENTION_JOB_ENABLED: 'false', MOCK_PROVIDER_CHECK: 'true', CORS_ORIGINS: WEB,
       },
     },
     {

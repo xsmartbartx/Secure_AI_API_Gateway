@@ -12,7 +12,8 @@ from app.adapters.anthropic_adapter import AnthropicAdapter
 from app.adapters.mock_adapter import MockAdapter
 from app.adapters.openai_adapter import OpenAIAdapter
 from app.config import settings
-from app.db import ApiKey, Organization, RequestLog, SessionLocal, get_session
+from app import providers
+from app.db import ApiKey, Organization, ProviderConnection, RequestLog, SessionLocal, get_session
 from app.deps import get_api_key
 from app.usage import billable_this_month
 from app.errors import GatewayError
@@ -37,7 +38,7 @@ def pick_provider(req: UnifiedChatRequest) -> str:
         return "openai"
     if settings.ALLOW_MOCK_UPSTREAM and settings.ENV != "prod":
         return "mock"
-    raise GatewayError(502, "upstream_not_configured", "No upstream provider is configured.")
+    raise GatewayError(502, "upstream_not_configured", "No model provider is configured. Add your own API key under Providers.")
 
 
 @router.get("/v1/health")
@@ -54,22 +55,38 @@ async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, se
     used = await billable_this_month(key.org_id, s=session)
     if used >= org.monthly_call_quota:
         raise GatewayError(429, "quota_exceeded", "Monthly call quota reached. Upgrade your plan to continue.", {"Retry-After": "3600"})
-    provider = pick_provider(body)
+    conn = await providers.resolve_connection(session, key.org_id, body.provider)
+    if conn:  # the org's own key
+        provider, credential = conn.provider, providers.decrypt_credential(conn.credential_enc, providers.aad_for(conn))
+    else:     # the platform's shared key (or the dev mock)
+        provider, credential = pick_provider(body), None
     body.model = body.model or DEFAULT_MODEL[provider]
     prompt_hash = hashlib.sha256("\n".join(m.content for m in body.messages).encode()).hexdigest()
-    return RequestLog(org_id=key.org_id, key_id=key.id if track_key else None, request_id=request.state.request_id,
-                      provider=provider, model=body.model, status_code=200, decision="allow", prompt_hash=prompt_hash)
+    log = RequestLog(org_id=key.org_id, key_id=key.id if track_key else None, request_id=request.state.request_id,
+                     provider=provider, model=body.model, status_code=200, decision="allow", prompt_hash=prompt_hash)
+    return log, credential, (conn.id if conn else None)
+
+
+async def _flag_connection(conn_id: str | None, error: GatewayError) -> None:
+    """The provider rejected a saved key (revoked, expired): show it as failing on the Providers page."""
+    if conn_id and error.code == "provider_auth_failed":
+        async with SessionLocal() as s:
+            c = await s.get(ProviderConnection, conn_id)
+            if c:
+                c.status = "failing"
+                await s.commit()
 
 
 async def _chat(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True) -> UnifiedChatResponse:
-    log = await _preflight(request, body, key, session, track_key)
+    log, credential, conn_id = await _preflight(request, body, key, session, track_key)
     started = time.monotonic()
     try:
-        result = await ADAPTERS[log.provider].execute_chat(body)
+        result = await ADAPTERS[log.provider].execute_chat(body, credential)
         log.tokens_in, log.tokens_out = result.usage.prompt_tokens, result.usage.completion_tokens
         return result
     except GatewayError as e:
         log.status_code, log.decision = e.status, "error"
+        await _flag_connection(conn_id, e)
         raise
     finally:
         log.latency_ms = int((time.monotonic() - started) * 1000)
@@ -142,9 +159,9 @@ async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, log: Re
 
 
 async def _chat_stream(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True):
-    log = await _preflight(request, body, key, session, track_key)
+    log, credential, conn_id = await _preflight(request, body, key, session, track_key)
     started = time.monotonic()
-    gen = ADAPTERS[log.provider].stream_chat(body)
+    gen = ADAPTERS[log.provider].stream_chat(body, credential)
     try:
         first = await gen.__anext__()  # surfaces upstream refusals as a normal HTTP error before any byte is sent
     except StopAsyncIteration:
@@ -152,6 +169,7 @@ async def _chat_stream(request: Request, body: UnifiedChatRequest, key: ApiKey, 
     except GatewayError as e:
         log.status_code, log.decision = e.status, "error"
         log.latency_ms = int((time.monotonic() - started) * 1000)
+        await _flag_connection(conn_id, e)
         await _write_log(log, key.id if track_key else None)
         raise
     return StreamingResponse(

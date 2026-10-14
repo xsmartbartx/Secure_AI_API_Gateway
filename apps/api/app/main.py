@@ -11,7 +11,7 @@ from app.config import settings
 from app.db import init_db
 from app.retention import retention_loop
 from app.errors import GatewayError, envelope, gateway_error_handler
-from app.routers import account, billing, control, data
+from app.routers import account, billing, control, data, providers as provider_routes
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -22,6 +22,8 @@ async def lifespan(_: FastAPI):
     if settings.ENV == "prod":  # prod uses Alembic migrations; refuse unsafe config
         if not settings.AUTH_JWKS_URL or not settings.AUTH_ISSUER:
             raise RuntimeError("ENV=prod requires AUTH_JWKS_URL and AUTH_ISSUER")
+        if not settings.CREDENTIAL_ENCRYPTION_KEY:
+            raise RuntimeError("ENV=prod requires CREDENTIAL_ENCRYPTION_KEY")
         if not settings.REDIS_URL:
             raise RuntimeError("ENV=prod requires REDIS_URL for shared rate limits")
     else:
@@ -65,3 +67,4 @@ app.include_router(data.router)
 app.include_router(control.router)
 app.include_router(billing.router)
 app.include_router(account.router)
+app.include_router(provider_routes.router)

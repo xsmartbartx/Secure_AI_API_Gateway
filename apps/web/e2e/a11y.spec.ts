@@ -36,6 +36,15 @@ test('axe: dashboard with data (keys table, logs table, drawer, key reveal banne
 })
 
 // Guards against a vacuous suite: axe must flag a violation we plant, so a clean result means something.
+test('axe: providers page with keys and the add form', async ({ page, dev, request }) => {
+  for (const [provider, key] of [['anthropic', 'sk-ant-axe-0001-secretvalue'], ['openai', 'sk-proj-axe-0002-secretvalue']])
+    await request.post('http://localhost:8411/api/providers', { headers: dev, data: { provider, label: `axe ${provider}`, api_key: key } })
+  await page.goto('/app/providers')
+  await expect(page.getByText('axe openai')).toBeVisible()
+  const r = await new AxeBuilder({ page }).analyze()
+  expect(r.violations.map(v => `${v.impact} ${v.id} ${v.nodes[0]?.target.join(' ')}`)).toEqual([])
+})
+
 test('axe canary: a planted violation is detected', async ({ page }) => {
   await page.goto('/pricing')
   await page.evaluate(() => {

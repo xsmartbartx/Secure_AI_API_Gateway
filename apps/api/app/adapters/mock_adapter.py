@@ -11,7 +11,7 @@ class MockAdapter(BaseProviderAdapter):
 
     name = "mock"
 
-    async def execute_chat(self, request: UnifiedChatRequest) -> UnifiedChatResponse:
+    async def execute_chat(self, request: UnifiedChatRequest, credential: str | None = None) -> UnifiedChatResponse:
         last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
         text = f"[mock] {last[:200]}"
         p = sum(len(m.content) for m in request.messages) // 4 + 1
@@ -22,7 +22,7 @@ class MockAdapter(BaseProviderAdapter):
             usage=UsageInfo(prompt_tokens=p, completion_tokens=c, total_tokens=p + c),
         )
 
-    async def stream_chat(self, request: UnifiedChatRequest):
+    async def stream_chat(self, request: UnifiedChatRequest, credential: str | None = None):
         full = await self.execute_chat(request)
         text = full.choices[0].message.content
         for i, word in enumerate(text.split(" ")):

@@ -15,9 +15,9 @@ async function authHeaders(): Promise<Record<string, string>> {
   }
   if (process.env.NEXT_PUBLIC_DEV_AUTH === '1') {
     // dev only: a localStorage override lets tests run each case in its own organization
-    let org = 'org_demo'
-    try { org = localStorage.getItem('devOrg') || org } catch {}
-    return { 'x-dev-org': org, 'x-dev-user': 'demo' }
+    let org = 'org_demo', role = ''
+    try { org = localStorage.getItem('devOrg') || org; role = localStorage.getItem('devRole') || '' } catch {}
+    return { 'x-dev-org': org, 'x-dev-user': 'demo', ...(role ? { 'x-dev-role': role } : {}) }
   }
   return {}
 }

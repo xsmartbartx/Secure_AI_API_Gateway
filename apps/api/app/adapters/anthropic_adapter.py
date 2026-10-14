@@ -6,19 +6,24 @@ from app.adapters.base import BaseProviderAdapter
 from app.schemas import StreamEvent, UnifiedChatRequest, UnifiedChatResponse, ChatChoice, ChatMessage, UsageInfo
 from app.config import settings
 
+def _auth() -> GatewayError:
+    return GatewayError(502, "provider_auth_failed", "Anthropic rejected the API key. Check it under Providers.")
+
+
 class AnthropicAdapter(BaseProviderAdapter):
     name = 'anthropic'
 
     def __init__(self):
         self.url = "https://api.anthropic.com/v1/messages"
 
-    async def execute_chat(self, request: UnifiedChatRequest) -> UnifiedChatResponse:
-        if not settings.ANTHROPIC_API_KEY:
+    async def execute_chat(self, request: UnifiedChatRequest, credential: str | None = None) -> UnifiedChatResponse:
+        api_key = credential or settings.ANTHROPIC_API_KEY
+        if not api_key:
             raise GatewayError(
-                502, 'upstream_not_configured', "Anthropic upstream provider credentials missing from Gateway.")
+                502, 'upstream_not_configured', "Anthropic upstream provider credentials missing from Gateway. Add your own key under Providers.")
 
         headers = {
-            "x-api-key": settings.ANTHROPIC_API_KEY,
+            "x-api-key": api_key,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json"
         }
@@ -46,6 +51,8 @@ class AnthropicAdapter(BaseProviderAdapter):
                 response = await client.post(self.url, json=payload, headers=headers, timeout=60.0)
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (401, 403):
+                    raise _auth()
                 raise GatewayError(502, 'upstream_error', f"Anthropic Error: {exc.response.text}"[:500])
             except httpx.RequestError as exc:
                 raise GatewayError(502, 'upstream_unreachable', f"Network unreachable: {str(exc)}")
@@ -71,10 +78,11 @@ class AnthropicAdapter(BaseProviderAdapter):
 
         return UnifiedChatResponse(id=data.get("id", "unk"), provider="anthropic", model=data.get("model", request.model), choices=choices, usage=usage)
 
-    async def stream_chat(self, request: UnifiedChatRequest):
-        if not settings.ANTHROPIC_API_KEY:
-            raise GatewayError(502, "upstream_not_configured", "Anthropic upstream provider credentials missing from Gateway.")
-        headers = {"x-api-key": settings.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async def stream_chat(self, request: UnifiedChatRequest, credential: str | None = None):
+        api_key = credential or settings.ANTHROPIC_API_KEY
+        if not api_key:
+            raise GatewayError(502, "upstream_not_configured", "Anthropic upstream provider credentials missing from Gateway. Add your own key under Providers.")
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
         system, msgs = None, []
         for m in request.messages:
             if m.role == "system":
@@ -88,6 +96,8 @@ class AnthropicAdapter(BaseProviderAdapter):
         async with httpx.AsyncClient(transport=self.transport) as client:
             try:
                 async with client.stream("POST", self.url, json=payload, headers=headers, timeout=httpx.Timeout(60.0, read=120.0)) as r:
+                    if r.status_code in (401, 403):
+                        raise _auth()
                     if r.status_code >= 400:
                         body = (await r.aread()).decode(errors="replace")
                         raise GatewayError(502, "upstream_error", f"Anthropic Error ({r.status_code}): {body}"[:500])

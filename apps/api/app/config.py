@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     # In dev with no upstream key, answer from a built-in mock so the full loop is testable
     ALLOW_MOCK_UPSTREAM: bool = True
+    MOCK_PROVIDER_CHECK: bool = False  # dev/e2e: accept provider keys without calling the provider (keys containing "bad" are rejected); ignored in prod
     MOCK_STREAM_DELAY_MS: int = 0  # dev: slow the mock stream to watch it arrive or test disconnects
 
     # Control-plane auth (NEXORA account SSO). JWKS URL + issuer verify session JWTs in prod.
@@ -27,6 +28,9 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:3000"
 
     CORS_ORIGINS: str = "http://localhost:3000,https://gateway.onenexora.com"
+    # 32 random bytes, base64. Encrypts customers' provider API keys at rest (AES-256-GCM). Required when ENV=prod.
+    CREDENTIAL_ENCRYPTION_KEY: str = ""
+
     # NEXORA account (Clerk/Svix) webhook signing secret, `whsec_...`. Empty = /webhooks/account refuses all requests.
     ACCOUNT_WEBHOOK_SECRET: str = ""
 

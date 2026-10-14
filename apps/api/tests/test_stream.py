@@ -105,7 +105,7 @@ async def test_upstream_refusal_before_first_byte_is_http_error(client):
 
 
 async def test_mid_stream_failure_is_reported_in_band(client, monkeypatch):
-    async def broken(self, request):
+    async def broken(self, request, credential=None):
         yield StreamEvent(type="delta", text="partial")
         raise GatewayError(502, "upstream_error", "provider died")
     monkeypatch.setattr(type(data.ADAPTERS["mock"]), "stream_chat", broken)

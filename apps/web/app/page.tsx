@@ -36,17 +36,17 @@ export default function Home() {
     <Section className="bg-surface">
       <h2 className="text-[28px] font-semibold leading-[34px]">What is real today</h2>
       <ul className="mt-6 grid gap-3 text-base md:grid-cols-2">
-        {['One governed endpoint and one key in front of your provider', 'Authentication, rate limiting, and monthly quota on every call', 'Request logs with decision, latency, and token counts, and a prompt hash instead of prompt text', 'A playground to test prompts without a key'].map(x => <li key={x} className="flex gap-3"><span className="text-success" aria-hidden>✓</span>{x}</li>)}
+        {['One governed endpoint and one key in front of your provider', 'Authentication, rate limiting, and monthly quota on every call', 'Request logs with decision, latency, and token counts, and a prompt hash instead of prompt text', 'Your own Anthropic or OpenAI key, checked and stored encrypted','A playground to test prompts without a key'].map(x => <li key={x} className="flex gap-3"><span className="text-success" aria-hidden>✓</span>{x}</li>)}
       </ul>
       <h2 className="mt-12 text-[28px] font-semibold leading-[34px]">On the roadmap</h2>
       <ul className="mt-6 grid gap-3 text-base text-text-muted md:grid-cols-2">
-        {['Multi-provider routing', 'Model allowlist and policy engine', 'Data loss prevention and prompt-injection detection', 'SIEM export and webhooks'].map(x => <li key={x} className="flex gap-3"><span aria-hidden>○</span>{x}</li>)}
+        {['Routing rules and fallback across providers', 'Model allowlist and policy engine', 'Data loss prevention and prompt-injection detection', 'SIEM export and webhooks'].map(x => <li key={x} className="flex gap-3"><span aria-hidden>○</span>{x}</li>)}
       </ul>
     </Section>
     <Section>
       <h2 className="text-[28px] font-semibold leading-[34px]">Questions</h2>
       <dl className="mt-6 grid gap-6 md:grid-cols-2">
-        {[['Do you store my prompts?', 'No. We store a hash of each prompt with the model, token counts, latency, and decision. See Data handling.'], ['Which providers can I use?', 'One configured upstream provider today. Multi-provider routing is on the roadmap.'], ['What does it cost?', 'Free and Starter plans are live. See Pricing.'], ['Does it stream?', 'Yes. Set stream to true and read the response as server-sent events.']].map(([q, a]) => <div key={q}><dt className="font-semibold">{q}</dt><dd className="mt-1 text-text-muted">{a}</dd></div>)}
+        {[['Do you store my prompts?', 'No. We store a hash of each prompt with the model, token counts, latency, and decision. See Data handling.'], ['Which providers can I use?', 'Anthropic and OpenAI, with your own key or the shared one. Routing rules across providers are on the roadmap.'], ['What does it cost?', 'Free and Starter plans are live. See Pricing.'], ['Does it stream?', 'Yes. Set stream to true and read the response as server-sent events.']].map(([q, a]) => <div key={q}><dt className="font-semibold">{q}</dt><dd className="mt-1 text-text-muted">{a}</dd></div>)}
       </dl>
     </Section>
     <Section className="text-center">
