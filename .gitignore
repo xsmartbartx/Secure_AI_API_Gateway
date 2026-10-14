@@ -30,3 +30,4 @@ apps/web/.next/
 apps/web/.env.local
 .env
 .claude/
+*.tsbuildinfo

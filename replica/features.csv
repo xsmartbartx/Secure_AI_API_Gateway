@@ -2,7 +2,7 @@ feature,area,priority,original,clone,notes
 Standalone gateway marketing site,site,must,no,yes,own domain/subdomain; NEXORA links out
 Pricing page with plans,site,must,partial,yes,Free 100 calls; Starter $19/1500 live today
 Docs quickstart + API reference,site,must,yes,no,docs.onenexora.com exists
-NEXORA to Gateway redirect + SSO handoff,platform,must,partial,no,Open Gateway -> /app
+NEXORA to Gateway redirect + SSO handoff,platform,must,partial,partial,gate + JWT verify built and unit-tested; not verified against live Clerk sign-in; NEXORA card CTA change pending
 Dashboard shell (nav/org switcher/breadcrumb),dashboard,must,no,partial,no org switcher or Cmd+K yet
 Overview KPIs + charts,dashboard,must,no,yes,
 API key create/reveal-once/revoke/rotate,dashboard,must,partial,yes,keys via Console today; hash at rest

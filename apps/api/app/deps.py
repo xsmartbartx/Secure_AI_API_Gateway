@@ -37,17 +37,35 @@ async def get_api_key(request: Request, session: AsyncSession = Depends(get_sess
 _jwks = None
 
 
-def _verify_jwt(token: str) -> dict:
+def _jwks_client():
     global _jwks
-    if not settings.AUTH_JWKS_URL:
+    if _jwks is None:
+        _jwks = jwt.PyJWKClient(settings.AUTH_JWKS_URL, cache_keys=True, lifespan=3600)
+    return _jwks
+
+
+def _verify_jwt(token: str) -> dict:
+    """Verify a NEXORA account (Clerk) session token: RS256 signature via JWKS, issuer, expiry, and the page origin (azp)."""
+    if not settings.AUTH_JWKS_URL or not settings.AUTH_ISSUER:
         raise GatewayError(500, "auth_not_configured", "Session verification is not configured.")
-    _jwks = _jwks or jwt.PyJWKClient(settings.AUTH_JWKS_URL)
     try:
-        signing_key = _jwks.get_signing_key_from_jwt(token)
-        return jwt.decode(token, signing_key.key, algorithms=["RS256"], issuer=settings.AUTH_ISSUER or None,
-                          options={"verify_aud": False})
+        signing_key = _jwks_client().get_signing_key_from_jwt(token)
+        claims = jwt.decode(token, signing_key.key, algorithms=["RS256"], issuer=settings.AUTH_ISSUER,
+                            leeway=5, options={"verify_aud": False, "require": ["exp", "iat", "sub", "iss"]})
     except jwt.PyJWTError:
         raise GatewayError(401, "invalid_session", "Your session is invalid or expired. Sign in again.")
+    azp = claims.get("azp")
+    if azp and azp not in settings.cors_list:  # token was minted for some other site
+        raise GatewayError(401, "invalid_session", "Your session is invalid or expired. Sign in again.")
+    return claims
+
+
+def _org_and_role(claims: dict) -> tuple[str, str]:
+    """Clerk session tokens v1 use org_id/org_role; v2 nests them in `o` (id, rol). No org = personal workspace."""
+    o = claims.get("o") if isinstance(claims.get("o"), dict) else {}
+    org = claims.get("org_id") or o.get("id") or claims["sub"]
+    raw = claims.get("org_role") or ("org:" + o["rol"] if o.get("rol") else "")
+    return org, {"org:admin": "admin"}.get(raw, "developer")
 
 
 async def get_principal(request: Request, session: AsyncSession = Depends(get_session)) -> Principal:
@@ -61,9 +79,8 @@ async def get_principal(request: Request, session: AsyncSession = Depends(get_se
         if not header.lower().startswith("bearer "):
             raise GatewayError(401, "missing_session", "Sign in to continue.")
         claims = _verify_jwt(header.split(" ", 1)[1])
-        ext_org = claims.get("org_id") or claims.get("sub")
+        ext_org, role = _org_and_role(claims)
         ext_user, email = claims["sub"], claims.get("email", "")
-        role = {"org:admin": "admin"}.get(claims.get("org_role", ""), "developer")
 
     org = (await session.execute(select(Organization).where(Organization.external_org_id == ext_org))).scalar_one_or_none()
     if org is None:  # first visit: provision from the account org

@@ -1,14 +1,18 @@
-// Single data layer for the dashboard. Dev: sends X-Dev-* headers. Prod: sends the NEXORA account session token.
+// Single data layer for the dashboard. Prod: Bearer session token from the NEXORA account (see lib/session.tsx). Dev only: X-Dev-* headers.
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message) }
 }
 
-function authHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {}
-  const token = (window as any).__NEXORA_SESSION_TOKEN__ as string | undefined
-  if (token) return { authorization: `Bearer ${token}` }
+let tokenGetter: (() => Promise<string | null>) | null = null
+export function setTokenGetter(fn: (() => Promise<string | null>) | null) { tokenGetter = fn }
+
+async function authHeaders(): Promise<Record<string, string>> {
+  if (tokenGetter) {
+    const token = await tokenGetter()
+    if (token) return { authorization: `Bearer ${token}` }
+  }
   if (process.env.NEXT_PUBLIC_DEV_AUTH === '1') return { 'x-dev-org': 'org_demo', 'x-dev-user': 'demo' }
   return {}
 }
@@ -16,7 +20,7 @@ function authHeaders(): Record<string, string> {
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...authHeaders(), ...(init.headers as object) },
+    headers: { 'content-type': 'application/json', ...(await authHeaders()), ...(init.headers as object) },
     cache: 'no-store',
   })
   const body = await res.json().catch(() => ({}))

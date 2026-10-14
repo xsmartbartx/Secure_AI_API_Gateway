@@ -20,7 +20,7 @@
 | Streaming | known gap (not a must in matrix, but #1 dev expectation) |
 
 ## Blockers to clear first (in order)
-1. NEXORA SSO handoff (needs your account service details: JWKS URL, issuer, claims; web SDK).
+1. NEXORA SSO handoff: code done (see backend.md). Left: allow `https://gateway.onenexora.com` in Clerk, set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, run one real sign-in on a preview deploy, change the NEXORA Gateway card CTA.
 2. Run against real Postgres (Neon) + Redis (Upstash) + Stripe **test** mode; fix what breaks.
 3. Playwright e2e for F01/F05/F07 + axe scan.
 4. Legal pages reviewed + processors list; account-deletion endpoint; retention purge job (data-handling page promises 7/30 days).

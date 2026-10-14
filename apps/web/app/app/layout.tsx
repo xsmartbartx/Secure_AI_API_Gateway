@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useApi } from '@/lib/use-fetch'
+import { AuthGate, useSession } from '@/lib/session'
 
 const NAV = [
   { href: '/app', label: 'Overview', icon: LayoutDashboard },
@@ -19,7 +20,12 @@ const NAV = [
   { href: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return <AuthGate><AppShell>{children}</AppShell></AuthGate>
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
+  const session = useSession()
   const path = usePathname()
   const [open, setOpen] = useState(false)
   const [dark, setDark] = useState(false)
@@ -37,8 +43,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <span className="mx-2 hidden h-5 w-px bg-border sm:block" />
       <span className="hidden truncate text-text-muted sm:block">{me?.org.name ?? ''}</span>
       <div className="ml-auto flex items-center gap-2">
-        <span className="hidden text-xs text-text-muted md:block">{me?.member.email}</span>
+        <span className="hidden text-xs text-text-muted md:block">{session.email || me?.member.email}</span>
         <button className="rounded p-2 hover:bg-surface" aria-label="Toggle theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
+        {process.env.NEXT_PUBLIC_DEV_AUTH !== '1' && <button className="rounded px-2 py-1 text-xs hover:bg-surface" onClick={session.signOut}>Sign out</button>}
       </div>
     </header>
     <nav aria-label="Dashboard" className={`fixed bottom-0 left-0 top-12 z-10 w-60 overflow-y-auto bg-nav-bg p-2 transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
