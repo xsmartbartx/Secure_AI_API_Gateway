@@ -35,3 +35,13 @@ Legend: A = automated (pytest, `apps/api/tests`), M = manual in browser, - = not
 
 Playwright e2e was skipped as not cheap here (needs browser download + SSO stub); manual click-through used instead. Add e2e before launch.
 Totals: 29 cases, 24 pass, 0 fail now, 5 blocked/not run.
+
+
+## Update 2026-10-14: automated browser suite
+`apps/web/e2e` (Playwright 1.64, real Chrome via `channel: 'chrome'`, run with `npm run e2e` in `apps/web`). It starts a fresh API (SQLite, mock upstream, 150 ms per streamed word) on :8411 and a production build of the web app on :3411; each test runs in its own organization and **fails on any console error or 5xx**.
+- 66 tests; green on repeated runs, including one with every test run twice (no flakes).
+- Flows: F01 first call (empty state, create key, reveal-once banner, call, logged row, keyboard-open drawer without prompt text, overview); blank key name; F05 revoke (+cancel the dialog, + rate limit 429/Retry-After); playground streaming (partial text before the end, Stop -> 499 "cancelled by client"); quota exhaustion (100 calls) shown in billing and playground; usage by key/model/day, totals, CSV download + formula neutralisation, invalid range; settings (typed-name delete, key dies, owner sees form); marketing pages and dead-link check; 404; favicon.
+- Responsive: no horizontal scroll at 390px on 11 pages; dashboard menu opens, navigates, closes.
+- **Accessibility (axe-core, WCAG 2.0/2.1/2.2 A+AA + best practices):** 17 pages x light and dark, plus the dashboard with data (keys table, key-reveal banner, logs table, open drawer). A canary test plants violations and checks axe reports them, so a clean result is not vacuous. All clean after fixing B9.
+- Found by this suite and fixed: B6 (S2), B7 (S3), B8 (S2), B9 (S4).
+Not covered: real Clerk sign-in, real Stripe checkout, real Anthropic/OpenAI, real Postgres/Redis; screen-reader and manual keyboard review beyond what axe and the keyboard tests cover (axe finds roughly a third of accessibility problems); Safari/Firefox (Chrome only); visual regression.

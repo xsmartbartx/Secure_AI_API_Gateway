@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from sqlalchemy import BigInteger, Date, DateTime, TypeDecorator, ForeignKey, Integer, LargeBinary, String, Index
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, TypeDecorator, UniqueConstraint
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -50,6 +50,7 @@ class Member(Base):
     email: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String, default="developer")
     created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
+    __table_args__ = (UniqueConstraint("org_id", "external_user_id", name="uq_members_org_user"),)
 
 
 class ApiKey(Base):

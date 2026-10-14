@@ -31,3 +31,7 @@ apps/web/.env.local
 .env
 .claude/
 *.tsbuildinfo
+apps/web/.next-e2e/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/api/e2e.db*

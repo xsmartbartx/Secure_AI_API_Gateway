@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import jwt
 from fastapi import Depends, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -67,6 +68,21 @@ def _org_and_role(claims: dict) -> tuple[str, str]:
     return org, {"org:admin": "admin"}.get(raw, "developer")
 
 
+async def _get_or_create(session: AsyncSession, query, make):
+    """First visits fire several requests at once, each trying to create the same row. The unique constraint decides the
+    winner; the others roll back their savepoint and read the winner's row."""
+    row = (await session.execute(query)).scalar_one_or_none()
+    if row is not None:
+        return row
+    try:
+        async with session.begin_nested():
+            row = make()
+            session.add(row)
+    except IntegrityError:
+        row = (await session.execute(query)).scalar_one()
+    return row
+
+
 async def get_principal(request: Request, session: AsyncSession = Depends(get_session)) -> Principal:
     if settings.ENV != "prod" and settings.DEV_AUTH and request.headers.get("x-dev-org"):
         ext_org = request.headers["x-dev-org"]
@@ -81,16 +97,11 @@ async def get_principal(request: Request, session: AsyncSession = Depends(get_se
         ext_org, role = _org_and_role(claims)
         ext_user, email = claims["sub"], claims.get("email", "")
 
-    org = (await session.execute(select(Organization).where(Organization.external_org_id == ext_org))).scalar_one_or_none()
-    if org is None:  # first visit: provision from the account org
-        org = Organization(external_org_id=ext_org, name=ext_org, monthly_call_quota=settings.FREE_MONTHLY_QUOTA)
-        session.add(org)
-        await session.flush()
-    member = (await session.execute(select(Member).where(Member.org_id == org.id, Member.external_user_id == ext_user))).scalar_one_or_none()
-    if member is None:
-        first = (await session.execute(select(Member).where(Member.org_id == org.id).limit(1))).scalar_one_or_none() is None
-        member = Member(org_id=org.id, external_user_id=ext_user, email=email, role="owner" if first else role)
-        session.add(member)
+    org = await _get_or_create(session, select(Organization).where(Organization.external_org_id == ext_org),
+                               lambda: Organization(external_org_id=ext_org, name=ext_org, monthly_call_quota=settings.FREE_MONTHLY_QUOTA))
+    first = (await session.execute(select(Member.id).where(Member.org_id == org.id).limit(1))).first() is None
+    member = await _get_or_create(session, select(Member).where(Member.org_id == org.id, Member.external_user_id == ext_user),
+                                  lambda: Member(org_id=org.id, external_user_id=ext_user, email=email, role="owner" if first else role))
     await session.commit()
     return Principal(org=org, member=member, role=member.role)
 

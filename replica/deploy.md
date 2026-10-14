@@ -6,7 +6,7 @@
 | check | result |
 | --- | --- |
 | API tests (`pytest`) | PASS 16/16 |
-| Playwright e2e | **NOT RUN** (no e2e suite yet; manual click-through only) |
+| Playwright e2e + axe | PASS 65/65 (`cd apps/web && npm run e2e`), Chrome only |
 | Parity must-haves | **FAIL** 8 of 14 done (score 68.2): SSO handoff, docs link target, Redis (untested vs real), Stripe (untested vs real), usage per key/cost, legal review; plus new must: data-handling page (built, but retention not enforced yet) |
 | Brand sweep | PASS clean |
 | `next build` | PASS (19 routes, Next 16.4.0) |
@@ -22,7 +22,7 @@
 ## Blockers to clear first (in order)
 1. NEXORA SSO handoff: code done (see backend.md). Left: allow `https://gateway.onenexora.com` in Clerk, set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, run one real sign-in on a preview deploy, change the NEXORA Gateway card CTA.
 2. Run against real Postgres (Neon) + Redis (Upstash) + Stripe **test** mode; fix what breaks.
-3. Playwright e2e for F01/F05/F07 + axe scan.
+3. ~~Playwright e2e + axe scan~~ done (F07 SSO handoff still needs a real sign-in on a preview).
 4. Legal pages reviewed + processors list. (Account deletion and retention purge are built; add the Clerk webhook `/webhooks/account` + `ACCOUNT_WEBHOOK_SECRET`.)
 5. Logo/favicon/OG; decide pricing tiers (see launch/pricing.md); real docs at docs.onenexora.com.
 6. Trademark/domain screening for "NEXORA" (never run; see brand.md).

@@ -13,7 +13,12 @@ async function authHeaders(): Promise<Record<string, string>> {
     const token = await tokenGetter()
     if (token) return { authorization: `Bearer ${token}` }
   }
-  if (process.env.NEXT_PUBLIC_DEV_AUTH === '1') return { 'x-dev-org': 'org_demo', 'x-dev-user': 'demo' }
+  if (process.env.NEXT_PUBLIC_DEV_AUTH === '1') {
+    // dev only: a localStorage override lets tests run each case in its own organization
+    let org = 'org_demo'
+    try { org = localStorage.getItem('devOrg') || org } catch {}
+    return { 'x-dev-org': org, 'x-dev-user': 'demo' }
+  }
   return {}
 }
 

@@ -37,7 +37,7 @@ app = FastAPI(title="NEXORA Gateway API", version="2.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_list, allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["authorization", "content-type", "x-dev-org", "x-dev-user", "x-dev-role"],
-    expose_headers=["x-nexora-request-id", "retry-after"],
+    expose_headers=["x-nexora-request-id", "retry-after", "content-disposition"],
 )
 
 

@@ -183,3 +183,22 @@ async def test_B5_invalid_json_message(client):
     k = await make_key(client)
     r = await client.post("/v1/chat", content=b"nope", headers={"authorization": f"Bearer {k['secret']}", "content-type": "application/json"})
     assert r.status_code == 422 and r.json()["error"]["message"].startswith("Request body is not valid JSON")
+
+
+# ---- found by the Playwright suite: the dashboard fires several requests at once on a user's first visit ----
+async def test_B6_concurrent_first_requests_provision_one_org(client):
+    import asyncio
+    hdr = {"x-dev-org": "org_race", "x-dev-user": "racer"}
+    rs = await asyncio.gather(*[client.get(p, headers=hdr) for p in ["/api/me", "/api/keys", "/api/overview", "/api/logs", "/api/me", "/api/usage"]])
+    assert [r.status_code for r in rs] == [200] * 6, [r.text for r in rs if r.status_code != 200]
+    from app.db import Member, Organization, SessionLocal
+    from sqlalchemy import func, select
+    async with SessionLocal() as s:
+        assert (await s.execute(select(func.count()).select_from(Organization).where(Organization.external_org_id == "org_race"))).scalar_one() == 1
+        assert (await s.execute(select(func.count()).select_from(Member).where(Member.external_user_id == "racer"))).scalar_one() == 1
+
+
+async def test_B7_csv_filename_is_readable_by_the_browser(client):
+    # the web app (gateway.onenexora.com) and the API (api.onenexora.com) are different origins: the filename header must be exposed
+    r = await client.get("/api/usage?format=csv", headers={**DEV, "origin": "http://localhost:3000"})
+    assert "content-disposition" in r.headers.get("access-control-expose-headers", "").lower()
