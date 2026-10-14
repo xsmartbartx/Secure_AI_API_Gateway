@@ -46,7 +46,7 @@ export default function Home() {
     <Section>
       <h2 className="text-[28px] font-semibold leading-[34px]">Questions</h2>
       <dl className="mt-6 grid gap-6 md:grid-cols-2">
-        {[['Do you store my prompts?', 'No. We store a hash of each prompt with the model, token counts, latency, and decision. See Data handling.'], ['Which providers can I use?', 'One configured upstream provider today. Multi-provider routing is on the roadmap.'], ['What does it cost?', 'Free and Starter plans are live. See Pricing.'], ['Does it stream?', 'Not yet. Streaming is next on the list.']].map(([q, a]) => <div key={q}><dt className="font-semibold">{q}</dt><dd className="mt-1 text-text-muted">{a}</dd></div>)}
+        {[['Do you store my prompts?', 'No. We store a hash of each prompt with the model, token counts, latency, and decision. See Data handling.'], ['Which providers can I use?', 'One configured upstream provider today. Multi-provider routing is on the roadmap.'], ['What does it cost?', 'Free and Starter plans are live. See Pricing.'], ['Does it stream?', 'Yes. Set stream to true and read the response as server-sent events.']].map(([q, a]) => <div key={q}><dt className="font-semibold">{q}</dt><dd className="mt-1 text-text-muted">{a}</dd></div>)}
       </dl>
     </Section>
     <Section className="text-center">

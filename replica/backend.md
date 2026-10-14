@@ -20,7 +20,7 @@
 6. **Resend** + sending domain (SPF/DKIM) when email is added.
 
 ## Not built yet
-Streaming (SSE), per-org provider vault, policies/DLP/injection, usage rollups, retention purge job, quota emails, team/invites, webhooks out, account deletion (GDPR purge) endpoint, `usage_daily` rollup (queries read logs directly: fine until ~1M rows/org).
+per-org provider vault, policies/DLP/injection, usage rollups, retention purge job, quota emails, team/invites, webhooks out, account deletion (GDPR purge) endpoint, `usage_daily` rollup (queries read logs directly: fine until ~1M rows/org).
 
 ## Security checklist
 - [x] secrets only in env vars; `.env*` ignored; `.env.example` has no values; nothing secret in the web bundle (only `NEXT_PUBLIC_API_BASE`, dev flag)
@@ -49,3 +49,12 @@ Found by reading the public sign-in page: account.onenexora.com is a **Clerk pro
 - Same-domain sessions: gateway.onenexora.com is a subdomain of the account's primary domain, so the account session is shared without Clerk satellite config.
 - **Not verified live:** I did not sign in (I never enter credentials), and a production Clerk key does not load on localhost. First real check must happen on a deployed `gateway.onenexora.com` preview.
 - Known limits: the default Clerk session token has no email claim (the UI shows the email from Clerk's user object; the API stores an empty email unless you add a custom claim in Clerk); a member's role is set at first sign-in and is not re-synced when changed in Clerk; no `/webhooks/account` sync yet (org/member deletion, GDPR purge).
+
+## Streaming (2026-10-14)
+- `stream: true` on `/v1/chat`, `/v1/chat/completions` and `/api/playground` returns `text/event-stream` of OpenAI-style `chat.completion.chunk` objects (role chunk, content deltas, a final chunk with `finish_reason` and `usage`, then `data: [DONE]`). Both data-plane routes use this one format.
+- Adapters (`stream_chat`) for Anthropic (message_start / content_block_delta / message_delta / error events), OpenAI (`stream_options.include_usage`) and the mock. Upstream refusals are raised **before the first byte**, so callers get a normal JSON error + correct HTTP status; failures after the stream started are sent as an in-band `data: {"error":...}` event and logged as `error`.
+- Auth, rate limit and quota run before anything streams (plain JSON 401/429). A streamed call counts toward quota.
+- Exactly one log row per stream, written by the stream's own DB session in `finally` (shielded), including when the client disconnects: status **499**, decision `allow` (the call happened and counts), tokens = provider-reported if seen, else an estimate (chars/4). Dashboard shows 499 as "cancelled by client".
+- Tests (37 total pass): shape + logging, OpenAI route, preflight errors stay JSON, quota counting, refusal before first byte, mid-stream failure, disconnect (generator closed -> one 499 row), playground, and adapter parsing against canned upstream SSE (Anthropic, OpenAI, HTTP error, in-stream error). Verified over real HTTP with curl (chunks arrive 400 ms apart; a client abort logs 499) and in the browser (playground streams, Stop button works).
+- **Not verified against the real Anthropic/OpenAI APIs** (no keys here); parsing follows their documented event formats.
+- Not done: tool calls / non-text content blocks are ignored in streams; no heartbeat comments for idle proxies; no cost estimate.

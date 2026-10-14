@@ -1,7 +1,9 @@
+import json
+
 import httpx
 from app.errors import GatewayError
 from app.adapters.base import BaseProviderAdapter
-from app.schemas import UnifiedChatRequest, UnifiedChatResponse, ChatChoice, ChatMessage, UsageInfo
+from app.schemas import StreamEvent, UnifiedChatRequest, UnifiedChatResponse, ChatChoice, ChatMessage, UsageInfo
 from app.config import settings
 
 class AnthropicAdapter(BaseProviderAdapter):
@@ -39,7 +41,7 @@ class AnthropicAdapter(BaseProviderAdapter):
         if system_content:
             payload["system"] = system_content
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(transport=self.transport) as client:
             try:
                 response = await client.post(self.url, json=payload, headers=headers, timeout=60.0)
                 response.raise_for_status()
@@ -68,3 +70,47 @@ class AnthropicAdapter(BaseProviderAdapter):
         )
 
         return UnifiedChatResponse(id=data.get("id", "unk"), provider="anthropic", model=data.get("model", request.model), choices=choices, usage=usage)
+
+    async def stream_chat(self, request: UnifiedChatRequest):
+        if not settings.ANTHROPIC_API_KEY:
+            raise GatewayError(502, "upstream_not_configured", "Anthropic upstream provider credentials missing from Gateway.")
+        headers = {"x-api-key": settings.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+        system, msgs = None, []
+        for m in request.messages:
+            if m.role == "system":
+                system = m.content
+            else:
+                msgs.append({"role": m.role, "content": m.content})
+        payload = {"model": request.model, "messages": msgs, "max_tokens": request.max_tokens or 1024,
+                   "temperature": request.temperature, "stream": True}
+        if system:
+            payload["system"] = system
+        async with httpx.AsyncClient(transport=self.transport) as client:
+            try:
+                async with client.stream("POST", self.url, json=payload, headers=headers, timeout=httpx.Timeout(60.0, read=120.0)) as r:
+                    if r.status_code >= 400:
+                        body = (await r.aread()).decode(errors="replace")
+                        raise GatewayError(502, "upstream_error", f"Anthropic Error ({r.status_code}): {body}"[:500])
+                    async for line in r.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        try:
+                            obj = json.loads(line[5:].strip())
+                        except json.JSONDecodeError:
+                            continue
+                        kind = obj.get("type")
+                        if kind == "message_start":
+                            u = (obj.get("message") or {}).get("usage") or {}
+                            yield StreamEvent(type="usage", prompt_tokens=u.get("input_tokens", 0), completion_tokens=0)
+                        elif kind == "content_block_delta" and (obj.get("delta") or {}).get("type") == "text_delta":
+                            yield StreamEvent(type="delta", text=obj["delta"].get("text", ""))
+                        elif kind == "message_delta":
+                            u = obj.get("usage") or {}
+                            if "output_tokens" in u:
+                                yield StreamEvent(type="usage", completion_tokens=u["output_tokens"])
+                            if (obj.get("delta") or {}).get("stop_reason"):
+                                yield StreamEvent(type="finish", finish_reason=obj["delta"]["stop_reason"])
+                        elif kind == "error":
+                            raise GatewayError(502, "upstream_error", f"Anthropic stream error: {(obj.get('error') or {}).get('message', 'unknown')}"[:500])
+            except httpx.RequestError as exc:
+                raise GatewayError(502, "upstream_unreachable", f"Network unreachable: {exc}")

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     # In dev with no upstream key, answer from a built-in mock so the full loop is testable
     ALLOW_MOCK_UPSTREAM: bool = True
+    MOCK_STREAM_DELAY_MS: int = 0  # dev: slow the mock stream to watch it arrive or test disconnects
 
     # Control-plane auth (NEXORA account SSO). JWKS URL + issuer verify session JWTs in prod.
     AUTH_JWKS_URL: str = ""

@@ -35,3 +35,12 @@ class UnifiedChatResponse(BaseModel):
     model: str
     choices: list[ChatChoice]
     usage: UsageInfo
+
+
+class StreamEvent(BaseModel):
+    """Provider-neutral streaming event. type: delta (text), usage (token counts), finish (stop reason)."""
+    type: Literal["delta", "usage", "finish"]
+    text: str = ""
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    finish_reason: str | None = None

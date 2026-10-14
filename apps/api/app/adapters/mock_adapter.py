@@ -1,7 +1,9 @@
+import asyncio
 import uuid
 
 from app.adapters.base import BaseProviderAdapter
-from app.schemas import ChatChoice, ChatMessage, UnifiedChatRequest, UnifiedChatResponse, UsageInfo
+from app.config import settings
+from app.schemas import ChatChoice, ChatMessage, StreamEvent, UnifiedChatRequest, UnifiedChatResponse, UsageInfo
 
 
 class MockAdapter(BaseProviderAdapter):
@@ -19,3 +21,12 @@ class MockAdapter(BaseProviderAdapter):
             choices=[ChatChoice(index=0, message=ChatMessage(role="assistant", content=text), finish_reason="stop")],
             usage=UsageInfo(prompt_tokens=p, completion_tokens=c, total_tokens=p + c),
         )
+
+    async def stream_chat(self, request: UnifiedChatRequest):
+        full = await self.execute_chat(request)
+        text = full.choices[0].message.content
+        for i, word in enumerate(text.split(" ")):
+            await asyncio.sleep(settings.MOCK_STREAM_DELAY_MS / 1000)
+            yield StreamEvent(type="delta", text=(word if i == 0 else " " + word))
+        yield StreamEvent(type="usage", prompt_tokens=full.usage.prompt_tokens, completion_tokens=full.usage.completion_tokens)
+        yield StreamEvent(type="finish", finish_reason="stop")

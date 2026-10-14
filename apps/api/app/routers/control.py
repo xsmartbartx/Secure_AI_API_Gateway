@@ -153,15 +153,19 @@ class PlaygroundBody(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=20_000)
     system: str | None = Field(None, max_length=20_000)
     model: str | None = None
+    stream: bool = False
 
 
 @router.post("/playground")
 async def playground(body: PlaygroundBody, request: Request, p: Principal = Depends(require("developer")),
                      s: AsyncSession = Depends(get_session)):
     """Runs a call as the signed-in user; uses the same pipeline as /v1/chat but needs no key. Counts toward quota."""
-    from app.routers.data import _chat
+    from app.routers.data import _chat, _chat_stream
     from app.schemas import ChatMessage, UnifiedChatRequest
 
     msgs = ([ChatMessage(role="system", content=body.system)] if body.system else []) + [ChatMessage(role="user", content=body.prompt)]
     pseudo = ApiKey(id="playground:" + p.member.id, org_id=p.org.id, name="playground", prefix="", key_hash=b"", last4="", rpm_limit=30)
-    return await _chat(request, UnifiedChatRequest(messages=msgs, model=body.model), pseudo, s, track_key=False)
+    req = UnifiedChatRequest(messages=msgs, model=body.model, stream=body.stream)
+    if body.stream:
+        return await _chat_stream(request, req, pseudo, s, track_key=False)
+    return await _chat(request, req, pseudo, s, track_key=False)

@@ -21,7 +21,7 @@ function Logs() {
       {data && data.items.length > 0 && <table className="w-full text-sm"><thead className="border-b border-border"><tr><Th>Time</Th><Th>Decision</Th><Th>Model</Th><Th>Tokens</Th><Th>Latency</Th><Th>Status</Th></tr></thead>
         <tbody className="divide-y divide-border">{data.items.map(l => <tr key={l.id} tabIndex={0} onClick={() => setSel(l)} onKeyDown={e => e.key === 'Enter' && setSel(l)} className="cursor-pointer hover:bg-surface">
           <Td className="whitespace-nowrap">{new Date(l.ts).toLocaleString()}</Td><Td><Pill decision={l.decision} /></Td><Td className="max-w-40 truncate">{l.model}</Td>
-          <Td>{l.tokens_in + l.tokens_out}</Td><Td>{l.latency_ms ?? '–'} ms</Td><Td>{l.status_code}</Td></tr>)}</tbody></table>}
+          <Td>{l.tokens_in + l.tokens_out}</Td><Td>{l.latency_ms ?? '–'} ms</Td><Td>{l.status_code === 499 ? '499 · cancelled by client' : l.status_code}</Td></tr>)}</tbody></table>}
     </Card>
     {sel && <aside role="dialog" aria-label="Request details" className="fixed inset-y-0 right-0 z-30 w-full overflow-y-auto border-l border-border bg-surface-raised p-6 shadow-pop sm:w-[480px]">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">Request details</h2><button autoFocus className="rounded p-2 hover:bg-surface" onClick={() => setSel(null)} aria-label="Close details">✕</button></div>

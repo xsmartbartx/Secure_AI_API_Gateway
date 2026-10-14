@@ -31,3 +31,37 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export type Overview = { calls: number; blocked: number; errors: number; tokens: number; p50_latency_ms: number | null; quota: { used: number; limit: number }; series: { day: string; calls: number; blocked: number; errors: number }[] }
 export type Key = { id: string; name: string; prefix: string; last4: string; rpm_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }
 export type Log = { id: string; request_id: string; ts: string; key_id: string | null; provider: string | null; model: string | null; status_code: number; decision: 'allow' | 'flag' | 'block' | 'error'; risk_score: number | null; tokens_in: number; tokens_out: number; latency_ms: number | null }
+
+/** POST that answers with an SSE stream of chat chunks. Calls onDelta for each text piece; resolves with the final usage. */
+export async function apiStream(path: string, body: unknown, onDelta: (t: string) => void, signal?: AbortSignal) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST', body: JSON.stringify(body), signal, cache: 'no-store',
+    headers: { 'content-type': 'application/json', ...(await authHeaders()) },
+  })
+  if (!res.ok || !res.body) {
+    const b = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, b?.error?.code ?? 'error', b?.error?.message ?? res.statusText)
+  }
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  let buf = '', usage: { total_tokens: number } | null = null, model = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    let i: number
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2)
+      if (!line.startsWith('data:')) continue
+      const data = line.slice(5).trim()
+      if (data === '[DONE]') return { usage, model }
+      const obj = JSON.parse(data)
+      if (obj.error) throw new ApiError(502, obj.error.code, obj.error.message)
+      model = obj.model ?? model
+      const t = obj.choices?.[0]?.delta?.content
+      if (t) onDelta(t)
+      if (obj.usage) usage = obj.usage
+    }
+  }
+  return { usage, model }
+}
