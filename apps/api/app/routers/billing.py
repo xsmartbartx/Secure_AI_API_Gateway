@@ -112,3 +112,13 @@ async def stripe_webhook(request: Request, s: AsyncSession = Depends(get_session
             sub.status = "past_due"
     await s.commit()
     return {"received": True}
+
+
+def cancel_subscription_now(subscription_id: str) -> None:
+    """Stop billing immediately (used when an organization is deleted). The Stripe customer record stays: invoices must be kept for accounting."""
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    try:
+        stripe.Subscription.cancel(subscription_id)
+    except stripe.InvalidRequestError as e:
+        if getattr(e, "code", None) != "resource_missing":  # already gone is fine
+            raise

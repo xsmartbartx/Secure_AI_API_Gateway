@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:3000"
 
     CORS_ORIGINS: str = "http://localhost:3000,https://gateway.onenexora.com"
+    # NEXORA account (Clerk/Svix) webhook signing secret, `whsec_...`. Empty = /webhooks/account refuses all requests.
+    ACCOUNT_WEBHOOK_SECRET: str = ""
+
+    RETENTION_JOB_ENABLED: bool = True
+    RETENTION_INTERVAL_HOURS: int = 24
     DEFAULT_RPM: int = 60
     FREE_MONTHLY_QUOTA: int = 100
 

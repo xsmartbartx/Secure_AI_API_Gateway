@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from contextlib import asynccontextmanager
 
@@ -7,8 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db import init_db
+from app.retention import retention_loop
 from app.errors import GatewayError, envelope, gateway_error_handler
-from app.routers import billing, control, data
+from app.routers import account, billing, control, data
+
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -20,7 +26,10 @@ async def lifespan(_: FastAPI):
             raise RuntimeError("ENV=prod requires REDIS_URL for shared rate limits")
     else:
         await init_db()
+    task = asyncio.create_task(retention_loop()) if settings.RETENTION_JOB_ENABLED else None
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(title="NEXORA Gateway API", version="2.0.0", lifespan=lifespan)
@@ -55,3 +64,4 @@ async def validation_handler(request: Request, exc: RequestValidationError):
 app.include_router(data.router)
 app.include_router(control.router)
 app.include_router(billing.router)
+app.include_router(account.router)

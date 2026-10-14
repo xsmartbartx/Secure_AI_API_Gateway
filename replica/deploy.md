@@ -15,7 +15,7 @@
 | Open S1 / S2 bugs | PASS none (S1 0, S2 0; see bugs.md "to check" T1-T6) |
 | Terms / Privacy live with processors | **FAIL** draft placeholders, no processor list |
 | Favicon, OG image, logo | **FAIL** none yet (logo brief only) |
-| Account deletion | **FAIL** not built (GDPR purge endpoint missing) |
+| Account deletion | PASS built and tested (org delete, leave, account-service webhook); Clerk webhook endpoint still to be created by you |
 | Cookie banner | n/a: no cookies set by the app (theme in localStorage only); re-check if analytics added |
 | Streaming | known gap (not a must in matrix, but #1 dev expectation) |
 
@@ -23,7 +23,7 @@
 1. NEXORA SSO handoff: code done (see backend.md). Left: allow `https://gateway.onenexora.com` in Clerk, set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, run one real sign-in on a preview deploy, change the NEXORA Gateway card CTA.
 2. Run against real Postgres (Neon) + Redis (Upstash) + Stripe **test** mode; fix what breaks.
 3. Playwright e2e for F01/F05/F07 + axe scan.
-4. Legal pages reviewed + processors list; account-deletion endpoint; retention purge job (data-handling page promises 7/30 days).
+4. Legal pages reviewed + processors list. (Account deletion and retention purge are built; add the Clerk webhook `/webhooks/account` + `ACCOUNT_WEBHOOK_SECRET`.)
 5. Logo/favicon/OG; decide pricing tiers (see launch/pricing.md); real docs at docs.onenexora.com.
 6. Trademark/domain screening for "NEXORA" (never run; see brand.md).
 

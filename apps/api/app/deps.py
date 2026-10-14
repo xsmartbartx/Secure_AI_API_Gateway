@@ -1,4 +1,3 @@
-import datetime as dt
 from dataclasses import dataclass
 
 import jwt
@@ -102,8 +101,3 @@ def require(min_role: str):
             raise GatewayError(403, "forbidden", f"This needs the {min_role} role or higher.")
         return p
     return dep
-
-
-def month_start() -> dt.datetime:
-    n = dt.datetime.now(dt.timezone.utc)
-    return n.replace(day=1, hour=0, minute=0, second=0, microsecond=0)

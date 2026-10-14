@@ -6,11 +6,14 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import case, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import engine, ApiKey, RequestLog, SecurityEvent, get_session
-from app.deps import Principal, month_start, require
+from app import accounts
+from app.retention import RETENTION_DAYS
+from app.db import Member, ApiKey, RequestLog, SecurityEvent, get_session
+from app.deps import Principal, require
+from app.usage import billable_this_month, usage_rows, utc_midnight
 from app.errors import GatewayError
 from app.keys import generate_key
 
@@ -37,8 +40,37 @@ class KeyCreate(BaseModel):
 
 @router.get("/me")
 async def me(p: Principal = Depends(require("viewer"))):
-    return {"org": {"id": p.org.id, "name": p.org.name, "plan": p.org.plan, "quota": p.org.monthly_call_quota},
+    return {"org": {"id": p.org.id, "name": p.org.name, "plan": p.org.plan, "quota": p.org.monthly_call_quota,
+                    "retention_days": RETENTION_DAYS.get(p.org.plan, 7)},
             "member": {"email": p.member.email, "role": p.role}}
+
+
+class OrgDelete(BaseModel):
+    confirm: str = ""
+
+
+@router.post("/org/delete")
+async def delete_org(body: OrgDelete, p: Principal = Depends(require("owner")), s: AsyncSession = Depends(get_session)):
+    """Permanently delete the organization and everything stored for it. The caller must type the organization's name."""
+    if body.confirm != p.org.name:
+        raise GatewayError(422, "confirmation_mismatch", "Type the organization name exactly to confirm.")
+    await accounts.cancel_billing(s, p.org.id, strict=True)
+    await accounts.delete_org_data(s, p.org.id)
+    await s.commit()
+    return {"deleted": True}
+
+
+@router.delete("/me")
+async def leave_org(p: Principal = Depends(require("viewer")), s: AsyncSession = Depends(get_session)):
+    """Remove the caller's membership (their email and account id) from this organization."""
+    others = (await s.execute(select(Member).where(Member.org_id == p.org.id, Member.id != p.member.id))).scalars().all()
+    if not others:
+        raise GatewayError(409, "last_member", "You are the only member. Delete the organization instead.")
+    if p.role == "owner" and not any(m.role == "owner" for m in others):
+        raise GatewayError(409, "last_owner", "Make another member an owner first, or delete the organization.")
+    await s.delete(p.member)
+    await s.commit()
+    return {"left": True}
 
 
 @router.get("/keys")
@@ -109,25 +141,19 @@ async def get_log(log_id: str, p: Principal = Depends(require("viewer")), s: Asy
 @router.get("/overview")
 async def overview(days: int = Query(7, ge=1, le=90), p: Principal = Depends(require("viewer")),
                    s: AsyncSession = Depends(get_session)):
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
-    rows = (await s.execute(select(RequestLog).where(RequestLog.org_id == p.org.id, RequestLog.ts >= since))).scalars().all()
-    by_day: dict[str, dict] = {}
-    for r in rows:
-        d = r.ts.date().isoformat()
-        b = by_day.setdefault(d, {"day": d, "calls": 0, "blocked": 0, "errors": 0})
-        b["calls"] += 1
-        b["blocked"] += r.decision == "block"
-        b["errors"] += r.decision == "error"
-    month_calls = (await s.execute(select(func.count()).select_from(RequestLog).where(
-        RequestLog.org_id == p.org.id, RequestLog.ts >= month_start(), RequestLog.decision != "error"))).scalar_one()
-    lat = sorted(r.latency_ms for r in rows if r.latency_ms is not None)
+    today = dt.datetime.now(dt.timezone.utc).date()
+    start = today - dt.timedelta(days=days - 1)  # `days` UTC calendar days including today
+    by_day = await usage_rows(s, p.org.id, start, today, "day")
+    series = [{"day": d, "calls": v["calls"], "blocked": v["blocked"], "errors": v["errors"]} for d, v in sorted(by_day.items())]
+    lat = sorted(x for (x,) in (await s.execute(select(RequestLog.latency_ms).where(
+        RequestLog.org_id == p.org.id, RequestLog.ts >= utc_midnight(start), RequestLog.latency_ms.is_not(None)))).all())
     return {
-        "calls": len(rows), "blocked": sum(r.decision == "block" for r in rows),
-        "errors": sum(r.decision == "error" for r in rows),
-        "tokens": sum(r.tokens_in + r.tokens_out for r in rows),
-        "p50_latency_ms": lat[len(lat) // 2] if lat else None,
-        "quota": {"used": month_calls, "limit": p.org.monthly_call_quota},
-        "series": sorted(by_day.values(), key=lambda x: x["day"]),
+        "calls": sum(v["calls"] for v in by_day.values()), "blocked": sum(v["blocked"] for v in by_day.values()),
+        "errors": sum(v["errors"] for v in by_day.values()),
+        "tokens": sum(v["tokens_in"] + v["tokens_out"] for v in by_day.values()),
+        "p50_latency_ms": lat[len(lat) // 2] if lat else None,  # latency is only kept with the logs (retention window)
+        "quota": {"used": await billable_this_month(p.org.id, s=s), "limit": p.org.monthly_call_quota},
+        "series": series,
     }
 
 
@@ -148,29 +174,17 @@ async def usage(from_: dt.date | None = Query(None, alias="from"), to: dt.date |
         raise GatewayError(422, "invalid_range", "'from' must not be after 'to'.")
     if (to - from_).days > 366:
         raise GatewayError(422, "invalid_range", "The range can be at most 366 days.")
-    start = dt.datetime.combine(from_, dt.time.min, dt.timezone.utc)
-    end = dt.datetime.combine(to + dt.timedelta(days=1), dt.time.min, dt.timezone.utc)
-
-    # Postgres buckets timestamptz in the session time zone unless told otherwise; days here are UTC days.
-    day = func.date(func.timezone("UTC", RequestLog.ts)) if engine.dialect.name == "postgresql" else func.date(RequestLog.ts)
-    dim = {"key": RequestLog.key_id, "model": func.coalesce(RequestLog.model, "unknown"), "day": day}[group]
-    q = (select(dim.label("dim"), func.count().label("calls"),
-                func.sum(case((RequestLog.decision == "block", 1), else_=0)).label("blocked"),
-                func.sum(case((RequestLog.decision == "error", 1), else_=0)).label("errors"),
-                func.sum(RequestLog.tokens_in).label("tin"), func.sum(RequestLog.tokens_out).label("tout"))
-         .where(RequestLog.org_id == p.org.id, RequestLog.ts >= start, RequestLog.ts < end).group_by("dim"))  # by label: a bind-parameter expression repeated in GROUP BY is rejected by Postgres
-    raw = (await s.execute(q)).all()
+    agg = await usage_rows(s, p.org.id, from_, to, group)
 
     keys = {}
     if group == "key":
         keys = {k.id: k for k in (await s.execute(select(ApiKey).where(ApiKey.org_id == p.org.id))).scalars()}
     rows = []
-    for r in raw:
-        row = {"id": r.dim if group == "key" else None, "label": str(r.dim), "calls": r.calls, "blocked": int(r.blocked or 0),
-               "errors": int(r.errors or 0), "tokens_in": int(r.tin or 0), "tokens_out": int(r.tout or 0)}
+    for dim, v in agg.items():
+        row = {"id": dim if group == "key" else None, "label": str(dim), **v}
         if group == "key":
-            k = keys.get(r.dim)
-            row["label"] = k.name if k else ("Playground" if r.dim is None else "Deleted key")
+            k = keys.get(dim)
+            row["label"] = k.name if k else ("Playground" if dim is None else "Deleted key")
             row["prefix"] = f"{k.prefix}…{k.last4}" if k else None
             row["revoked"] = bool(k and k.revoked_at)
         rows.append(row)

@@ -38,3 +38,5 @@ Usage alerts (80%/100% quota email),dashboard,should,no,no,from replica-entrepre
 Published gateway latency overhead (p50/p95),site,should,no,no,from replica-entrepreneur
 "Data-handling page (what is stored, retention)",site,must,no,no,from replica-entrepreneur
 Model aliasing,api,could,no,no,from replica-entrepreneur
+Log retention purge (7/30/90/365 days by plan) with usage rollups,api,must,no,yes,daily job + CLI; counts kept in usage_daily so usage and quota survive purge
+Organization deletion + account-service deletion sync (GDPR),api,must,no,yes,"owner delete with typed confirmation, Stripe cancel first; Svix-signed /webhooks/account; not run against real Clerk"

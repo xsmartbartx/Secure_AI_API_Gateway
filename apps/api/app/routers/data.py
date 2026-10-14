@@ -6,7 +6,6 @@ import time
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.anthropic_adapter import AnthropicAdapter
@@ -14,7 +13,8 @@ from app.adapters.mock_adapter import MockAdapter
 from app.adapters.openai_adapter import OpenAIAdapter
 from app.config import settings
 from app.db import ApiKey, Organization, RequestLog, SessionLocal, get_session
-from app.deps import get_api_key, month_start
+from app.deps import get_api_key
+from app.usage import billable_this_month
 from app.errors import GatewayError
 from app.ratelimit import limiter
 from app.schemas import StreamEvent, UnifiedChatRequest, UnifiedChatResponse
@@ -51,10 +51,7 @@ async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, se
     if not ok:
         raise GatewayError(429, "rate_limited", "Too many requests for this key.", {"Retry-After": str(retry)})
     org = await session.get(Organization, key.org_id)
-    used = (await session.execute(
-        select(func.count()).select_from(RequestLog).where(
-            RequestLog.org_id == key.org_id, RequestLog.ts >= month_start(), RequestLog.decision != "error")
-    )).scalar_one()
+    used = await billable_this_month(key.org_id, s=session)
     if used >= org.monthly_call_quota:
         raise GatewayError(429, "quota_exceeded", "Monthly call quota reached. Upgrade your plan to continue.", {"Retry-After": "3600"})
     provider = pick_provider(body)
@@ -107,7 +104,6 @@ async def _write_log(log: RequestLog, key_id: str | None) -> None:
 async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, log: RequestLog, key_id: str | None, started: float):
     """Yields OpenAI-style chunks. Always writes exactly one log row, even if the client disconnects mid-stream."""
     rid, p_tokens, c_tokens, emitted, finish = log.request_id, None, None, 0, None
-    outcome = "ok"
     try:
         yield _chunk(rid, log.model, {"role": "assistant"})
         pending = [first] if first is not None else []
@@ -124,12 +120,10 @@ async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, log: Re
     except StopAsyncIteration:
         pass
     except GatewayError as e:  # upstream failed after the stream began: say so in-band, then close
-        outcome = "error"
         log.status_code, log.decision = e.status, "error"
         yield f"data: {json.dumps({'error': {'code': e.code, 'message': e.message, 'request_id': rid}})}\n\n"
         return
     except (asyncio.CancelledError, GeneratorExit):  # client went away; the call still happened and still counts
-        outcome = "aborted"
         log.status_code = 499
         raise
     finally:

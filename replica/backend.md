@@ -20,7 +20,7 @@
 6. **Resend** + sending domain (SPF/DKIM) when email is added.
 
 ## Not built yet
-per-org provider vault, policies/DLP/injection, usage rollups, retention purge job, quota emails, team/invites, webhooks out, account deletion (GDPR purge) endpoint, `usage_daily` rollup (queries read logs directly: fine until ~1M rows/org).
+per-org provider vault, policies/DLP/injection, usage rollups, quota emails, team/invites, webhooks out, data export (GDPR access/portability).
 
 ## Security checklist
 - [x] secrets only in env vars; `.env*` ignored; `.env.example` has no values; nothing secret in the web bundle (only `NEXT_PUBLIC_API_BASE`, dev flag)
@@ -67,3 +67,9 @@ Found by reading the public sign-in page: account.onenexora.com is a **Clerk pro
 - Web (`/app/usage`): By key / By model / By day, date range with 7/30/90-day presets, totals row, daily chart with empty days shown as gaps, CSV download, empty/error/invalid-range states.
 - Tests: 7 new (44 total): grouping, inclusive ranges, validation, org isolation, unattributed calls, CSV. Checked in the browser against seeded data.
 - Still no cost: token counts only. Reads live from `request_logs`; add the `usage_daily` rollup when an org passes ~1M rows.
+
+## Retention and deletion (2026-10-14)
+**Retention** (`app/retention.py`): free 7 days, starter 30, team 90, enterprise 365. A daily in-process job (and `python -m app.retention` for a cron) rolls whole UTC days older than the window into `usage_daily` (counts per org/day/key/model: no content) and deletes those logs and their security events, one transaction per day. Merge, not replace, if a straggler log arrives for a rolled-up day. A day is therefore in exactly one place, and usage/overview/quota read both (`app/usage.py`). Quota previously counted live logs only, which would have reset the month's usage when logs were purged; it now adds rolled-up billable calls. Effective retention is the window plus up to 24h. Latency p50 on the overview only covers retained logs. Verified: 9 tests, plus a real SQLite run (40 old logs purged, usage totals identical before and after).
+**Organization deletion**: `POST /api/org/delete` (owner only, must type the org name exactly): cancels the Stripe subscription first (if Stripe fails, nothing is deleted, 502), then hard-deletes events, logs, usage counts, keys, subscription row, members and the org. Stripe webhook event ids and the Stripe customer record are kept (accounting). `DELETE /api/me` removes the caller's membership; refused for the last member or sole owner. Settings page has retention info and the delete form (verified in the browser: button disabled until the name matches; all tables empty afterwards).
+**Account-service sync**: `POST /webhooks/account` verifies Svix signatures (HMAC-SHA256, 5-minute tolerance) with `ACCOUNT_WEBHOOK_SECRET`; handles `user.deleted` (drops memberships, deletes orgs left empty and the personal workspace), `organization.deleted`, `organizationMembership.deleted`; idempotent; refuses all requests when the secret is unset. **You must add the endpoint and secret in the Clerk dashboard (Webhooks)**; not tested against real Clerk, only against locally signed payloads.
+Limits: deletes are single statements per org (large orgs would want batching); no data export yet; in-process job runs in every worker (idempotent, wasteful); deletion cannot recall data already sent to your model provider; backups (Neon) keep deleted data until they expire, say so in the privacy policy.

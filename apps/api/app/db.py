@@ -1,8 +1,8 @@
 import datetime as dt
 import uuid
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, TypeDecorator, ForeignKey, Integer, LargeBinary, String, Index
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import BigInteger, Date, DateTime, TypeDecorator, ForeignKey, Integer, LargeBinary, String, Index
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.config import settings
@@ -117,6 +117,24 @@ class StripeEvent(Base):
     __tablename__ = "stripe_events"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     received_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
+
+
+class UsageDaily(Base):
+    """Counts only, no content. Written when request_logs are purged so usage history and the monthly quota outlive log retention.
+    key_id is a plain string (no FK) so history survives key deletion."""
+    __tablename__ = "usage_daily"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    day: Mapped[dt.date] = mapped_column(Date)
+    key_id: Mapped[str | None] = mapped_column(String)
+    model: Mapped[str] = mapped_column(String, default="unknown")
+    calls: Mapped[int] = mapped_column(Integer, default=0)
+    billable: Mapped[int] = mapped_column(Integer, default=0)  # calls that count toward quota (decision != error)
+    blocked: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_in: Mapped[int] = mapped_column(BigInteger, default=0)
+    tokens_out: Mapped[int] = mapped_column(BigInteger, default=0)
+    __table_args__ = (Index("ix_usage_daily_org_day", "org_id", "day"),)
 
 
 async def init_db() -> None:

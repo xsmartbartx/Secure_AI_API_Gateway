@@ -16,7 +16,7 @@ cd apps/api && python3 -m venv .venv && .venv/bin/pip install -r requirements.tx
 
 cd apps/web && npm install && npm run dev            # http://localhost:3000 (uses .env.local, see .env.example)
 ```
-Tests: `cd apps/api && .venv/bin/python -m pytest -q` (44 tests).
+Tests: `cd apps/api && .venv/bin/python -m pytest -q` (62 tests).
 With no upstream key set, dev mode answers from a built-in mock so the full loop works offline. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for a real provider.
 
 ## First call
