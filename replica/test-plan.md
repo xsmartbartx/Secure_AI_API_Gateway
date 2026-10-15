@@ -49,3 +49,5 @@ Not covered: real Clerk sign-in, real Stripe checkout, real Anthropic/OpenAI, re
 Update (providers): 69 browser tests now (added provider-key CRUD, developer read-only, axe on the providers page with keys); 78 API tests.
 
 Update (export): 71 browser tests, 84 API tests.
+
+Update (team): 75 browser tests, 93 API tests.

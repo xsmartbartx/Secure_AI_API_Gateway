@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useApi } from '@/lib/use-fetch'
+import { api, apiDownload } from '@/lib/api'
 import { AuthGate, useSession } from '@/lib/session'
 
 const NAV = [
@@ -29,7 +30,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname()
   const [open, setOpen] = useState(false)
   const [dark, setDark] = useState(false)
-  const { data: me } = useApi<{ org: { name: string; plan: string }; member: { email: string; role: string } }>('/api/me')
+  const { data: me } = useApi<{ org: { name: string; plan: string }; member: { email: string; role: string; status: string } }>('/api/me')
   useEffect(() => { try { const t = localStorage.getItem('theme'); if (t) setDark(t === 'dark') } catch {} }, [])
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; try { localStorage.setItem('theme', dark ? 'dark' : 'light') } catch {} }, [dark])
   useEffect(() => setOpen(false), [path])
@@ -56,8 +57,27 @@ function AppShell({ children }: { children: React.ReactNode }) {
     <main id="content" className="px-4 pb-16 pt-[72px] lg:pl-[272px]">
       <div className="mx-auto max-w-content">
         <p className="mb-4 text-xs text-text-muted">Gateway / {current}</p>
-        {children}
+        {me?.member.status === 'suspended' ? <Suspended onSignOut={session.signOut} /> : children}
       </div>
     </main>
+  </div>
+}
+
+// A suspended member still gets to see why, take their own data, and leave.
+function Suspended({ onSignOut }: { onSignOut: () => void }) {
+  const [err, setErr] = useState<string | null>(null)
+  async function leave() {
+    if (!confirm('Leave this organization? Your membership record is deleted.')) return
+    try { await api('/api/me', { method: 'DELETE' }); onSignOut(); window.location.href = '/' } catch (e: any) { setErr(e.message) }
+  }
+  return <div className="mx-auto max-w-lg rounded-lg border border-border bg-surface-raised p-8 text-center shadow-card">
+    <h1 className="text-xl font-semibold">Your access is suspended</h1>
+    <p className="mt-2 text-text-muted">An owner of this organization suspended your access to Gateway. Ask them to restore it. You can still download your own data or leave the organization.</p>
+    <div className="mt-6 flex flex-wrap justify-center gap-3">
+      <button className="h-10 rounded-md border border-border-input px-4 text-sm font-semibold hover:bg-surface" onClick={() => apiDownload('/api/me/export', 'my-gateway-data.json').catch(e => setErr(e.message))}>Download my data</button>
+      <button className="h-10 rounded-md border border-border-input px-4 text-sm font-semibold hover:bg-surface" onClick={leave}>Leave organization</button>
+      <button className="h-10 rounded-md px-4 text-sm font-semibold hover:bg-surface" onClick={onSignOut}>Sign out</button>
+    </div>
+    {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
   </div>
 }

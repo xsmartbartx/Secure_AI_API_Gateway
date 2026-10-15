@@ -39,10 +39,10 @@ class KeyCreate(BaseModel):
 
 
 @router.get("/me")
-async def me(p: Principal = Depends(require("viewer"))):
+async def me(p: Principal = Depends(require("viewer", allow_suspended=True))):
     return {"org": {"id": p.org.id, "name": p.org.name, "plan": p.org.plan, "quota": p.org.monthly_call_quota,
                     "retention_days": RETENTION_DAYS.get(p.org.plan, 7)},
-            "member": {"email": p.member.email, "role": p.role}}
+            "member": {"email": p.member.email, "role": p.role, "status": p.member.status}}
 
 
 class OrgDelete(BaseModel):
@@ -61,7 +61,7 @@ async def delete_org(body: OrgDelete, p: Principal = Depends(require("owner")), 
 
 
 @router.delete("/me")
-async def leave_org(p: Principal = Depends(require("viewer")), s: AsyncSession = Depends(get_session)):
+async def leave_org(p: Principal = Depends(require("viewer", allow_suspended=True)), s: AsyncSession = Depends(get_session)):
     """Remove the caller's membership (their email and account id) from this organization."""
     others = (await s.execute(select(Member).where(Member.org_id == p.org.id, Member.id != p.member.id))).scalars().all()
     if not others:

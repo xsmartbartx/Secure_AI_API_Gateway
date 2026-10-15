@@ -49,6 +49,7 @@ class Member(Base):
     external_user_id: Mapped[str] = mapped_column(String, index=True)
     email: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String, default="developer")
+    status: Mapped[str] = mapped_column(String, default="active", server_default="active")  # active | suspended (Gateway-level access switch)
     created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
     __table_args__ = (UniqueConstraint("org_id", "external_user_id", name="uq_members_org_user"),)
 

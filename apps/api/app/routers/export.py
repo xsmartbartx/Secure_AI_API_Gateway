@@ -76,7 +76,7 @@ async def export_org(p: Principal = Depends(require("admin"))):
 
 
 @router.get("/me/export")
-async def export_me(p: Principal = Depends(require("viewer"))):
+async def export_me(p: Principal = Depends(require("viewer", allow_suspended=True))):
     """The caller's own record: what Gateway holds about them as a person (not the organization's data or other members)."""
     return JSONResponse({"generated_at": dt.datetime.now(dt.timezone.utc).isoformat(), "member": _row(p.member),
                          "organization": {"id": p.org.id, "name": p.org.name},

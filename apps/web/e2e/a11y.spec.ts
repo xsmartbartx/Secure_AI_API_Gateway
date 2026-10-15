@@ -45,6 +45,15 @@ test('axe: providers page with keys and the add form', async ({ page, dev, reque
   expect(r.violations.map(v => `${v.impact} ${v.id} ${v.nodes[0]?.target.join(' ')}`)).toEqual([])
 })
 
+test('axe: team page with members', async ({ page, request, org }) => {
+  await page.goto('/app/team')
+  for (const [u, r] of [['adm', 'admin'], ['dev', 'developer'], ['vw', 'viewer']]) await request.get('http://localhost:8411/api/me', { headers: { 'x-dev-org': org, 'x-dev-user': u, 'x-dev-role': r } })
+  await page.reload()
+  await expect(page.getByRole('cell', { name: 'vw@dev.local', exact: true })).toBeVisible()
+  let r = await new AxeBuilder({ page }).analyze()
+  expect(r.violations.map(v => `${v.impact} ${v.id} ${v.nodes[0]?.target.join(' ')}`)).toEqual([])
+})
+
 test('axe canary: a planted violation is detected', async ({ page }) => {
   await page.goto('/pricing')
   await page.evaluate(() => {

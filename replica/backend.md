@@ -20,7 +20,7 @@
 6. **Resend** + sending domain (SPF/DKIM) when email is added.
 
 ## Not built yet
-policies/DLP/injection, usage rollups, quota emails, team/invites, webhooks out.
+policies/DLP/injection, usage rollups, quota emails, webhooks out, invites from inside Gateway (they live in the NEXORA account).
 
 ## Security checklist
 - [x] secrets only in env vars; `.env*` ignored; `.env.example` has no values; nothing secret in the web bundle (only `NEXT_PUBLIC_API_BASE`, dev flag)
@@ -48,7 +48,7 @@ Found by reading the public sign-in page: account.onenexora.com is a **Clerk pro
 - **Tests:** 9 new tests with a locally generated RSA key and a fake JWKS (valid, personal workspace, v2 org, expired, wrong issuer, foreign `azp`, HS256 forgery, dev headers ignored when `DEV_AUTH` off, cross-org isolation). 25 pass.
 - Same-domain sessions: gateway.onenexora.com is a subdomain of the account's primary domain, so the account session is shared without Clerk satellite config.
 - **Not verified live:** I did not sign in (I never enter credentials), and a production Clerk key does not load on localhost. First real check must happen on a deployed `gateway.onenexora.com` preview.
-- Known limits: the default Clerk session token has no email claim (the UI shows the email from Clerk's user object; the API stores an empty email unless you add a custom claim in Clerk); a member's role is set at first sign-in and is not re-synced when changed in Clerk; no `/webhooks/account` sync yet (org/member deletion, GDPR purge).
+- Known limits: the default Clerk session token has no email claim (the UI shows the email from Clerk's user object; the API stores an empty email unless you add a custom claim in Clerk); a member's role is set from the account role at first sign-in and afterwards owned by Gateway (changed on the Team page, not re-synced from Clerk); no `/webhooks/account` sync yet (org/member deletion, GDPR purge).
 
 ## Streaming (2026-10-14)
 - `stream: true` on `/v1/chat`, `/v1/chat/completions` and `/api/playground` returns `text/event-stream` of OpenAI-style `chat.completion.chunk` objects (role chunk, content deltas, a final chunk with `finish_reason` and `usage`, then `data: [DONE]`). Both data-plane routes use this one format.
@@ -91,3 +91,12 @@ Limits: deletes are single statements per org (large orgs would want batching); 
 - Settings page: "Export your data" card (admins: organization data + own record; developers/viewers: own record only). The data-handling page says data is available on request without a ticket.
 - Tests: 6 API tests (everything present, no secrets, valid JSON across page boundaries with 2,503 logs, empty org, role + isolation, own-record only, rate limit) and 2 browser tests. 84 API + 71 browser total.
 - Limits: the export covers what Gateway stores; the NEXORA account itself (name, sign-in) and Stripe billing records are held by those services and need their own export. No machine-readable schema file published.
+
+## Team (2026-10-15)
+- **Where things live**: invites, and removal from the company, are NEXORA account (Clerk) actions; Gateway cannot invite without a Clerk secret key and does not hold one. Gateway owns each member's *role inside Gateway* and a reversible *suspend* switch (`members.status`, migration included). Roles are set from the account role at first sign-in, then managed on the Team page.
+- **API**: `GET /api/members` (viewer+; ids and emails of the org's own members only), `PATCH /api/members/{id}` with `role` and/or `status` (admin+).
+- **Rules** (enforced on the server, mirrored in the UI): owners manage everyone; admins manage only developers and viewers and cannot grant admin or owner; nobody changes their own role or access (409); there is always an active owner (hard stop kept even though self-edit rules already guarantee it); other orgs' members are 404; changes are logged (ids only).
+- **Suspension**: a suspended member gets 403 `member_suspended` on everything except `GET /api/me` (so the app can say why), `GET /api/me/export` and `DELETE /api/me` (data rights and leaving do not depend on an admin's goodwill). Signing in again does not undo it. The UI replaces the dashboard with an explanation, "Download my data" and "Leave organization".
+- **Important limit**: suspension does **not** revoke the organization's API keys (they belong to the org, not a person). The Team page says so and points to key rotation.
+- **Why suspend and not remove**: removing a Gateway row would be undone at the person's next sign-in (they are still in the account's organization and would be re-provisioned). Suspension is the Gateway-level control that survives that; true removal is done in the NEXORA account, and the `organizationMembership.deleted` webhook then deletes the row.
+- Tests: 9 API tests (rules, isolation, suspension and data rights, validation) and 3 browser tests plus 2 axe scans. 93 API + 75 browser total.

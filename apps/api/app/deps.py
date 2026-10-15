@@ -106,8 +106,11 @@ async def get_principal(request: Request, session: AsyncSession = Depends(get_se
     return Principal(org=org, member=member, role=member.role)
 
 
-def require(min_role: str):
+def require(min_role: str, allow_suspended: bool = False):
+    """allow_suspended is for the few endpoints a suspended member still needs: seeing why they are locked out, leaving, and exporting their own data."""
     async def dep(p: Principal = Depends(get_principal)) -> Principal:
+        if p.member.status == "suspended" and not allow_suspended:
+            raise GatewayError(403, "member_suspended", "An owner suspended your access to this organization.")
         if ROLE_RANK[p.role] < ROLE_RANK[min_role]:
             raise GatewayError(403, "forbidden", f"This needs the {min_role} role or higher.")
         return p

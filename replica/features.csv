@@ -26,7 +26,7 @@ DLP masking/blocking (email/card/IBAN/PESEL/secrets),security,should,no,no,from 
 Prompt injection detection (monitor mode first),security,should,no,no,
 Risk score + decision,security,could,no,no,
 Security events feed,dashboard,should,no,partial,empty state; no detectors yet
-Team + RBAC,dashboard,should,no,no,
+Team + RBAC,dashboard,should,no,yes,"member list, role changes (owner all, admin only developer/viewer), reversible suspend, self-edit blocked; invites stay in the NEXORA account"
 Webhooks / SIEM export,integration,could,no,no,Splunk/Sentinel/Elastic
 Status page,site,should,yes,no,
 Terms/Privacy/DPA reviewed by lawyer,legal,must,draft,partial,draft placeholder pages
