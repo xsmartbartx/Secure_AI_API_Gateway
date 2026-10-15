@@ -47,3 +47,5 @@ Totals: 29 cases, 24 pass, 0 fail now, 5 blocked/not run.
 Not covered: real Clerk sign-in, real Stripe checkout, real Anthropic/OpenAI, real Postgres/Redis; screen-reader and manual keyboard review beyond what axe and the keyboard tests cover (axe finds roughly a third of accessibility problems); Safari/Firefox (Chrome only); visual regression.
 
 Update (providers): 69 browser tests now (added provider-key CRUD, developer read-only, axe on the providers page with keys); 78 API tests.
+
+Update (export): 71 browser tests, 84 API tests.

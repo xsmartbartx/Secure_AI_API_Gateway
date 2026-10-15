@@ -40,3 +40,4 @@ Published gateway latency overhead (p50/p95),site,should,no,no,from replica-entr
 Model aliasing,api,could,no,no,from replica-entrepreneur
 Log retention purge (7/30/90/365 days by plan) with usage rollups,api,must,no,yes,daily job + CLI; counts kept in usage_daily so usage and quota survive purge
 Organization deletion + account-service deletion sync (GDPR),api,must,no,yes,"owner delete with typed confirmation, Stripe cancel first; Svix-signed /webhooks/account; not run against real Clerk"
+Data export (GDPR access and portability),api,must,no,yes,"org export (admin) streams valid JSON, 60k logs 4s with flat memory; my-record export; no secrets, hashes or prompts"

@@ -11,7 +11,7 @@ from app.config import settings
 from app.db import init_db
 from app.retention import retention_loop
 from app.errors import GatewayError, envelope, gateway_error_handler
-from app.routers import account, billing, control, data, providers as provider_routes
+from app.routers import account, billing, control, data, export, providers as provider_routes
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -68,3 +68,4 @@ app.include_router(control.router)
 app.include_router(billing.router)
 app.include_router(account.router)
 app.include_router(provider_routes.router)
+app.include_router(export.router)

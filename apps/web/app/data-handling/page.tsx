@@ -20,6 +20,8 @@ export default function DataHandling() {
       <table className="w-full text-sm"><thead className="border-b border-border bg-surface"><tr>{['Data', 'What we keep', 'How long'].map(h => <th key={h} scope="col" className="px-4 py-3 text-left font-semibold">{h}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">{rows.map(r => <tr key={r[0]}><td className="px-4 py-3 font-medium">{r[0]}</td><td className="px-4 py-3 text-text-muted">{r[1]}</td><td className="px-4 py-3 text-text-muted">{r[2]}</td></tr>)}</tbody></table>
     </div>
+    <h2 className="mt-12 text-[28px] font-semibold leading-[34px]">Your data, on request</h2>
+    <p className="mt-2 max-w-prose text-text-muted">Admins can download everything Gateway stores about the organization as JSON from Settings, and any member can download their own record. No support ticket needed.</p>
     <h2 className="mt-12 text-[28px] font-semibold leading-[34px]">Deleting your data</h2>
     <p className="mt-2 max-w-prose text-text-muted">An owner can delete the organization from Settings. That removes keys, logs, usage counts and members, and cancels the subscription first. If your NEXORA account or organization is deleted, Gateway removes the matching data automatically.</p>
     <h2 className="mt-12 text-[28px] font-semibold leading-[34px]">Processors</h2>

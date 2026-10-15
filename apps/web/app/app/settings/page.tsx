@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Button, Card, ErrorState, PageHeader, Skeleton } from '@/components/ui'
-import { api } from '@/lib/api'
+import { api, apiDownload } from '@/lib/api'
 import { useSession } from '@/lib/session'
 import { useApi } from '@/lib/use-fetch'
 
@@ -14,6 +14,15 @@ export default function Settings() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const isOwner = me?.member.role === 'owner'
+  const isAdmin = isOwner || me?.member.role === 'admin'
+  const [exporting, setExporting] = useState<'org' | 'me' | null>(null)
+  const [exportErr, setExportErr] = useState<string | null>(null)
+
+  async function download(kind: 'org' | 'me') {
+    setExporting(kind); setExportErr(null)
+    try { await apiDownload(kind === 'org' ? '/api/org/export' : '/api/me/export', kind === 'org' ? 'nexora-gateway-export.json' : 'my-gateway-data.json') }
+    catch (e: any) { setExportErr(e.message) } finally { setExporting(null) }
+  }
 
   async function destroy(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setErr(null)
@@ -40,6 +49,15 @@ export default function Settings() {
       <Card className="p-6">
         <h2 className="font-semibold">Data retention</h2>
         <p className="mt-2 max-w-prose text-text-muted">Request logs are kept for {me.org.retention_days} days on the {me.org.plan} plan, then deleted within a day. Prompt text is never stored. After deletion we keep daily counts per key and model (no content) so your usage history and monthly quota stay accurate.</p>
+      </Card>
+      <Card className="p-6">
+        <h2 className="font-semibold">Export your data</h2>
+        <p className="mt-2 max-w-prose text-text-muted">Download everything Gateway stores about {isAdmin ? 'this organization' : 'you'} as a JSON file: members, key names, request logs, usage counts and security events. Prompt text, key secrets and provider keys are never included because we never keep them in readable form.</p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {isAdmin && <Button variant="secondary" loading={exporting === 'org'} onClick={() => download('org')}>Download organization data</Button>}
+          <Button variant="secondary" loading={exporting === 'me'} onClick={() => download('me')}>Download my own record</Button>
+        </div>
+        {exportErr && <p role="alert" className="mt-3 text-sm text-danger">{exportErr}</p>}
       </Card>
       <Card className="border-danger p-6">
         <h2 className="font-semibold text-danger">Delete organization</h2>

@@ -20,7 +20,7 @@
 6. **Resend** + sending domain (SPF/DKIM) when email is added.
 
 ## Not built yet
-policies/DLP/injection, usage rollups, quota emails, team/invites, webhooks out, data export (GDPR access/portability).
+policies/DLP/injection, usage rollups, quota emails, team/invites, webhooks out.
 
 ## Security checklist
 - [x] secrets only in env vars; `.env*` ignored; `.env.example` has no values; nothing secret in the web bundle (only `NEXT_PUBLIC_API_BASE`, dev flag)
@@ -83,3 +83,11 @@ Limits: deletes are single statements per org (large orgs would want batching); 
 - **Deliberately not built**: custom base URLs (Azure OpenAI, proxies): a user-supplied URL makes the server call arbitrary addresses (SSRF) and needs allow-listing and DNS pinning first. Key rotation of `CREDENTIAL_ENCRYPTION_KEY`. Per-key model allow-lists. Fallback between connections.
 - **Tests**: 14 API tests (encryption and row binding, no plaintext in the DB, key never returned, verify-before-store, default rules, roles, isolation across orgs, the upstream sees the org's own key and never another org's, streaming, provider auth failure, deletion, key rules) and 3 browser tests (add/reject/test/default/remove, developer read-only, axe). Total 78 API + 69 browser. Not verified against the real Anthropic/OpenAI key-check endpoints.
 - **Operational**: back up `CREDENTIAL_ENCRYPTION_KEY` separately from the database; losing it makes every stored provider key unreadable (customers would have to re-enter them).
+
+## Data export (2026-10-15)
+- `GET /api/org/export` (admin+): one valid JSON document, **streamed** in pages of 1,000 rows per table (ordered by id), so memory stays flat: a local run with 60,000 logs produced 22 MB in 4.3 s while the API process went from 93 MB to 107 MB, first byte in 5 ms. Sections: organization, members, api_keys, provider_connections, usage_daily, security_events, request_logs, subscription, plus `generated_at` and a plain-language `notes`. Excluded by design: key hashes, encrypted provider credentials, key secrets (not recoverable), prompt text (never stored).
+- `GET /api/me/export` (any member): only the caller's own membership record and the org name, never other members' data.
+- Rate limited to 3 per minute per org (a full export reads every table); every export is logged (org and member ids only). `Cache-Control: no-store`; filename `nexora-gateway-export-<org id>-<date>.json` (the org id, never the user-chosen name).
+- Settings page: "Export your data" card (admins: organization data + own record; developers/viewers: own record only). The data-handling page says data is available on request without a ticket.
+- Tests: 6 API tests (everything present, no secrets, valid JSON across page boundaries with 2,503 logs, empty org, role + isolation, own-record only, rate limit) and 2 browser tests. 84 API + 71 browser total.
+- Limits: the export covers what Gateway stores; the NEXORA account itself (name, sign-in) and Stripe billing records are held by those services and need their own export. No machine-readable schema file published.
