@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:          # not pull_request_target: forks never run with this repo's secrets (there are none here)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - run: pip install -r requirements.txt pyflakes pip-audit
+      - name: Lint (unused imports and names)
+        run: python -m pyflakes app
+      - name: Tests
+        run: python -m pytest -q
+      - name: Migrations apply, match the models, and roll back
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./ci-migrations.db
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+      - name: Dependency audit
+        run: pip-audit -r requirements.txt
+
+  web:
+    name: Web (typecheck, build, audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE: https://api.example.test
+      - name: Audit (production dependencies)
+        run: npm audit --omit=dev
+
+  e2e:
+    name: Browser tests and accessibility (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: API environment (the suite starts the server itself)
+        working-directory: apps/api
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+      - name: Web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Run the suite (real Chrome is preinstalled on GitHub's Ubuntu runners)
+        working-directory: apps/web
+        run: npx playwright test --reporter=list,html
+      - name: Keep the report when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7

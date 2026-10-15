@@ -53,3 +53,6 @@ Error tracking on api and web; uptime checks on `https://api.onenexora.com/v1/he
 
 ## Ask
 When blockers 1-4 are done I'll re-run this preflight; deploy only after you say go.
+
+## CI
+`.github/workflows/ci.yml`: API (lint, 93 tests, migrations up/check/down, pip-audit; Python 3.11 and 3.12), web (tsc, build, npm audit; Node 22), browser and axe suite (75 tests, real Chrome on the runner). Read-only token (`contents: read`), `pull_request` rather than `pull_request_target`, no secrets, concurrent runs cancelled. A dry run from a clean copy of the tree with `npm ci` and `CI=1` was green. **Not yet run on GitHub**, and Python 3.12 and Node 22 are untested locally (3.11 and 26 were used). Make the three jobs required checks in branch protection once they pass. Actions are pinned to major versions, not commit SHAs.

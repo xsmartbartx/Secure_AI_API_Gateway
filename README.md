@@ -18,6 +18,7 @@ cd apps/web && npm install && npm run dev            # http://localhost:3000 (us
 ```
 Tests: `cd apps/api && .venv/bin/python -m pytest -q` (93 tests).
 Browser tests (Playwright, real Chrome) and accessibility scans (axe): `cd apps/web && npm run e2e` (starts its own API and web server on ports 8411/3411).
+CI (`.github/workflows/ci.yml`) runs all of this on every pull request and on pushes to `main`: API lint, tests, migrations (up, check, down) and `pip-audit` on Python 3.11 and 3.12; web typecheck, build and `npm audit`; and the browser suite.
 With no upstream key set, dev mode answers from a built-in mock so the full loop works offline. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for a real provider.
 
 ## First call
