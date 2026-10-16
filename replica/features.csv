@@ -1,0 +1,43 @@
+feature,area,priority,original,clone,notes
+Standalone gateway marketing site,site,must,no,yes,own domain/subdomain; NEXORA links out
+Pricing page with plans,site,must,partial,yes,Free 100 calls; Starter $19/1500 live today
+Docs quickstart + API reference,site,must,yes,no,docs.onenexora.com exists
+NEXORA to Gateway redirect + SSO handoff,platform,must,partial,partial,gate + JWT verify built and unit-tested; not verified against live Clerk sign-in; NEXORA card CTA change pending
+Dashboard shell (nav/org switcher/breadcrumb),dashboard,must,no,partial,no org switcher or Cmd+K yet
+Overview KPIs + charts,dashboard,must,no,yes,
+API key create/reveal-once/revoke/rotate,dashboard,must,partial,yes,keys via Console today; hash at rest
+Playground,dashboard,must,yes,yes,exists at /app
+Request logs + detail drawer,dashboard,must,partial,yes,Console > Usage today
+Usage and cost per key/model,dashboard,must,partial,yes,"per key / model / day, date range (UTC, max 366d), totals, CSV export; no cost estimate by design (provider invoice is source of truth)"
+Onboarding checklist,dashboard,should,no,partial,empty-state CTA only; stepper todo
+Billing + upgrade (Stripe),billing,must,partial,partial,checkout/portal/webhooks coded + tested with signed fakes; needs Stripe test keys
+Unified chat endpoint /v1/chat,api,must,yes,yes,Anthropic-shaped
+OpenAI-compatible /v1/chat/completions,api,should,no,yes,drop-in for SDKs
+Streaming (SSE),api,must,no,yes,"OpenAI-style chunks on /v1/chat, /v1/chat/completions and playground; Anthropic+OpenAI+mock adapters; tested incl. disconnect"
+JSON error envelope + request id,api,must,no,yes,
+Bearer key auth with hashed keys,api,must,partial,yes,
+Rate limiting in shared store (Redis),api,must,partial,partial,"Redis implementation written, untested vs real Redis"
+Entitlement/quota enforcement,api,must,yes,yes,
+Audit logging (no raw prompt by default),api,must,yes,yes,
+Multi-provider routing (OpenAI/Anthropic/Azure OpenAI),api,should,no,partial,"per-org keys for Anthropic + OpenAI, choose by request `provider` or org default; no fallback/routing rules, no Azure OpenAI"
+Provider credential vault page,dashboard,should,no,yes,"bring your own Anthropic/OpenAI key: verified with the provider, AES-GCM encrypted, never returned; default + test + remove; no custom base URL (SSRF) yet"
+Model allowlist policy,policy,should,no,yes,"glob patterns per org, off/monitor/enforce, checked before dispatch (default model too), blocked calls logged + security event + not billed, dry-run tester"
+DLP masking/blocking (email/card/IBAN/PESEL/secrets),security,should,no,no,from architecture doc
+Prompt injection detection (monitor mode first),security,should,no,no,
+Risk score + decision,security,could,no,no,
+Security events feed,dashboard,should,no,partial,shows policy blocks and monitor flags; DLP/injection detectors not built
+Team + RBAC,dashboard,should,no,yes,"member list, role changes (owner all, admin only developer/viewer), reversible suspend, self-edit blocked; invites stay in the NEXORA account"
+Webhooks / SIEM export,integration,could,no,no,Splunk/Sentinel/Elastic
+Status page,site,should,yes,no,
+Terms/Privacy/DPA reviewed by lawyer,legal,must,draft,partial,draft placeholder pages
+Compliance badges (SOC2/ISO),skip,could,no,no,skip: do not claim until real
+Self-hosted Kong/K8s/Keycloak deployment,skip,could,no,no,out of MVP
+Microsoft/Apple branding assets,skip,could,no,no,skip: patterns only
+Per-key monthly spend/call limits + alerts,dashboard,should,no,no,from replica-entrepreneur
+Usage alerts (80%/100% quota email),dashboard,should,no,no,from replica-entrepreneur
+Published gateway latency overhead (p50/p95),site,should,no,no,from replica-entrepreneur
+"Data-handling page (what is stored, retention)",site,must,no,no,from replica-entrepreneur
+Model aliasing,api,could,no,no,from replica-entrepreneur
+Log retention purge (7/30/90/365 days by plan) with usage rollups,api,must,no,yes,daily job + CLI; counts kept in usage_daily so usage and quota survive purge
+Organization deletion + account-service deletion sync (GDPR),api,must,no,yes,"owner delete with typed confirmation, Stripe cancel first; Svix-signed /webhooks/account; not run against real Clerk"
+Data export (GDPR access and portability),api,must,no,yes,"org export (admin) streams valid JSON, 60k logs 4s with flat memory; my-record export; no secrets, hashes or prompts"

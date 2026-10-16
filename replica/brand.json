@@ -1,0 +1,31 @@
+{
+  "avoid": [
+    "Apple",
+    "Segoe",
+    "SF Pro",
+    "LiteLLM",
+    "Portkey",
+    "OpenRouter",
+    "Helicone",
+    "Bifrost",
+    "Calendly"
+  ],
+  "domains": [
+    "azure.com",
+    "microsoft.com",
+    "apple.com",
+    "litellm.ai",
+    "portkey.ai",
+    "openrouter.ai",
+    "helicone.ai"
+  ],
+  "colors": [
+    "#2a56d6",
+    "#2148b8",
+    "#0078d4",
+    "#106ebe",
+    "#0071e3",
+    "#007aff"
+  ],
+  "_note": "Azure OpenAI, Azure Entra ID and Microsoft Sentinel appear only as named integrations/providers (factual references), so those names are not in 'avoid'. Azure portal UI patterns are inspiration only; no assets used."
+}

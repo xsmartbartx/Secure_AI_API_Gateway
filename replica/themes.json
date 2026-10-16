@@ -1,0 +1,15 @@
+{
+  "_about": "Themes for AI-gateway feedback. Complaints and requests matched case-insensitively.",
+  "request_patterns": ["\\bwould (be )?(nice|great|love)\\b", "\\bi wish\\b", "\\[feature\\]", "\\bfeature request\\b", "\\bsupport (renaming|for)\\b", "\\badd\\b.*\\b(detection|alerting|stats|notifications)\\b", "\\bimprove\\b"],
+  "themes": [
+    {"id": "supply-chain", "label": "Gateway supply-chain and security trust", "kind": "complaint", "patterns": ["supply chain", "compromised", "credential stealer", "malicious", "credentials exposed", "vulnerable"]},
+    {"id": "bloat-latency", "label": "Heavy, slow or bloated gateway", "kind": "complaint", "patterns": ["\\bbloat", "adds a ton of latency", "\\blatency\\b", "\\b[0-9] ?GB\\b", "nothing \"?lite\"?", "import speed", "python dependency", "dynamic linking"]},
+    {"id": "markup", "label": "Markup, fees and pricing", "kind": "complaint", "patterns": ["\\b5% (fee|surcharge)", "surcharge", "markup", "cost overhead", "pricing", "per token"]},
+    {"id": "privacy", "label": "Data retention and prompt visibility", "kind": "complaint", "patterns": ["zero data retention", "\\bzdr\\b", "retain", "sees every prompt", "data leak"]},
+    {"id": "budget", "label": "No hard spend limits", "kind": "complaint", "patterns": ["hard budget", "hard limits", "set a limit", "spending"]},
+    {"id": "routing", "label": "Opaque provider routing and quality", "kind": "complaint", "patterns": ["pin you to a single provider", "quant settings", "cache hit", "fallbacks"]},
+    {"id": "manage-pain", "label": "Self-hosting a gateway is a pain", "kind": "complaint", "patterns": ["pain to manage", "janky", "buggy", "validation exception", "buffered response instead of stream", "warning"]},
+    {"id": "governance-need", "label": "Need for governance, policy and DLP at the gateway", "kind": "request", "patterns": ["policy enforce", "centrally managed", "prompt injection", "trustguard", "access control", "dlp", "authentication, billing and model choice"]},
+    {"id": "visibility", "label": "Per-user stats, alerts, cost tracking", "kind": "request", "patterns": ["tokens used by user", "notifications", "cost tracking", "streaming, caching", "feedback on requests"]}
+  ]
+}
