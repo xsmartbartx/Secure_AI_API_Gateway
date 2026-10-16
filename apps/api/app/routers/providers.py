@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import providers
@@ -56,21 +57,39 @@ async def list_connections(p: Principal = Depends(require("developer")), s: Asyn
     return {"items": [_out(c) for c in rows]}
 
 
+async def _count(s: AsyncSession, org_id: str) -> int:
+    return (await s.execute(select(func.count()).select_from(ProviderConnection).where(ProviderConnection.org_id == org_id))).scalar_one()
+
+
 @router.post("", status_code=201)
 async def add_connection(body: ConnectionIn, p: Principal = Depends(require("admin")), s: AsyncSession = Depends(get_session)):
-    count = (await s.execute(select(func.count()).select_from(ProviderConnection).where(ProviderConnection.org_id == p.org.id))).scalar_one()
-    if count >= MAX_CONNECTIONS:
+    if await _count(s, p.org.id) >= MAX_CONNECTIONS:  # early exit; re-checked below because the provider call takes a while
         raise GatewayError(409, "too_many_connections", f"You can store at most {MAX_CONNECTIONS} provider keys.")
     ok, retry = await limiter.allow(f"verify:{p.org.id}", 10)  # each save/test makes an outbound request
     if not ok:
         raise GatewayError(429, "rate_limited", "Too many key checks. Wait a minute.", {"Retry-After": str(retry)})
     if not await providers.check_credential(body.provider, body.api_key):  # never store a key the provider refuses
         raise GatewayError(422, "provider_rejected_key", f"{body.provider} rejected that API key. Check it and try again.")
-    c = ProviderConnection(org_id=p.org.id, provider=body.provider, label=body.label, hint=providers.hint_for(body.api_key),
-                           credential_enc=b"", is_default=count == 0, status="ok")
-    s.add(c)
-    await s.flush()  # the id is part of the encryption context
-    c.credential_enc = providers.encrypt_credential(body.api_key, providers.aad_for(c))
+
+    # Everything read before the provider call may be stale by now. Insert first and let the database arbitrate: the
+    # partial unique index allows one default per org, so a concurrent first add that loses falls back to "not default".
+    def make(is_default: bool) -> ProviderConnection:
+        return ProviderConnection(org_id=p.org.id, provider=body.provider, label=body.label, hint=providers.hint_for(body.api_key),
+                                  credential_enc=b"", is_default=is_default, status="ok")
+    c = make(await _count(s, p.org.id) == 0)
+    try:
+        async with s.begin_nested():
+            s.add(c)
+            await s.flush()
+    except IntegrityError:
+        c = make(False)
+        s.add(c)
+        await s.flush()
+    if await _count(s, p.org.id) > MAX_CONNECTIONS:  # concurrent adds all passed the early check: the excess back out
+        await s.delete(c)
+        await s.commit()
+        raise GatewayError(409, "too_many_connections", f"You can store at most {MAX_CONNECTIONS} provider keys.")
+    c.credential_enc = providers.encrypt_credential(body.api_key, providers.aad_for(c))  # the id is part of the encryption context
     await s.commit()
     return _out(c)
 

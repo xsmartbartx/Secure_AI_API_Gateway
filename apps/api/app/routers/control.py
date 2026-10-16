@@ -158,9 +158,13 @@ async def overview(days: int = Query(7, ge=1, le=90), p: Principal = Depends(req
 
 
 def _csv_cell(v) -> str:
-    """Spreadsheet formula injection: a key or model name like =HYPERLINK(...) must not run when the CSV is opened."""
+    """Spreadsheet formula injection: a key or model name like =HYPERLINK(...) must not run when the CSV is opened.
+    Spreadsheets skip leading spaces before deciding a cell is a formula, so check the first non-space character, and
+    treat a leading tab, carriage return or newline as a trigger too."""
     v = str(v)
-    return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+    if v[:1] in ("\t", "\r", "\n") or v.lstrip(" ")[:1] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+        return "'" + v
+    return v
 
 
 @router.get("/usage")

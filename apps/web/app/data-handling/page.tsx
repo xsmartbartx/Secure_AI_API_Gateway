@@ -9,7 +9,7 @@ const rows = [
   ['Request log', 'Time, model, provider, token counts, latency, status, decision, request ID.', 'Free 7 days, Starter 30 days, deleted within a day after that'],
   ['Daily usage counts', 'Calls, blocked, errors and token counts per day, key and model. No content, no prompts.', 'Until you delete the organization'],
   ['Provider keys you add', 'Checked with the provider, then encrypted at rest (AES-256-GCM). Never returned by the API or shown again, only the last four characters. Without one, calls use the shared key NEXORA configures.', 'Until you remove the key or delete the organization'],
-  ['Account and organization', 'Managed by NEXORA account. Gateway stores an organization ID, member roles and member emails.', 'Until the organization or the account is deleted'],
+  ['Account and organization', 'Managed by NEXORA account. Gateway stores an organization ID, member roles and, when your account provides it, the email of each member.', 'Until the organization or the account is deleted'],
   ['Billing records', 'Held by our payment provider (Stripe) as required for accounting. Gateway keeps only Stripe reference IDs.', 'As required by accounting law'],
 ]
 export default function DataHandling() {

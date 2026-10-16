@@ -85,11 +85,13 @@ async def _org_for_customer(s: AsyncSession, customer_id: str) -> str | None:
 
 @router.post("/webhooks/stripe")
 async def stripe_webhook(request: Request, s: AsyncSession = Depends(get_session)):
+    if not settings.STRIPE_WEBHOOK_SECRET:  # an empty secret would make a forged signature trivially computable
+        raise GatewayError(503, "webhook_not_configured", "Stripe webhooks are not configured.")
     payload = await request.body()
     try:
         event = stripe.Webhook.construct_event(payload, request.headers.get("stripe-signature", ""), settings.STRIPE_WEBHOOK_SECRET)
     except (ValueError, stripe.SignatureVerificationError):
-        raise GatewayError(400, "bad_signature", "Invalid webhook signature.")
+        raise GatewayError(400, "bad_signature", "Invalid webhook signature.") from None
 
     event = event.to_dict() if hasattr(event, "to_dict") else event
     if await s.get(StripeEvent, event["id"]):

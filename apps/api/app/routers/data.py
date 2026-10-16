@@ -2,8 +2,10 @@ import asyncio
 import datetime as dt
 import hashlib
 import json
+import logging
 import time
 
+from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +23,8 @@ from app.ratelimit import limiter
 from app.schemas import StreamEvent, UnifiedChatRequest, UnifiedChatResponse
 
 router = APIRouter()
+log = logging.getLogger("gateway.data")
+FLAG_CODES = {"provider_auth_failed", "provider_credentials_unreadable"}  # errors that mean a saved key no longer works
 
 ADAPTERS = {"anthropic": AnthropicAdapter(), "openai": OpenAIAdapter(), "mock": MockAdapter()}
 DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": "gpt-4o", "mock": "mock-1"}
@@ -46,30 +50,13 @@ async def health():
     return {"status": "operational"}
 
 
-async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool):
-    """Rate limit, quota, provider choice. Raises GatewayError before anything is sent upstream."""
-    ok, retry = await limiter.allow(key.id, key.rpm_limit)
-    if not ok:
-        raise GatewayError(429, "rate_limited", "Too many requests for this key.", {"Retry-After": str(retry)})
-    org = await session.get(Organization, key.org_id)
-    used = await billable_this_month(key.org_id, s=session)
-    if used >= org.monthly_call_quota:
-        raise GatewayError(429, "quota_exceeded", "Monthly call quota reached. Upgrade your plan to continue.", {"Retry-After": "3600"})
-    conn = await providers.resolve_connection(session, key.org_id, body.provider)
-    if conn:  # the org's own key
-        provider, credential = conn.provider, providers.decrypt_credential(conn.credential_enc, providers.aad_for(conn))
-    else:     # the platform's shared key (or the dev mock)
-        provider, credential = pick_provider(body), None
-    body.model = body.model or DEFAULT_MODEL[provider]
-    prompt_hash = hashlib.sha256("\n".join(m.content for m in body.messages).encode()).hexdigest()
-    log = RequestLog(org_id=key.org_id, key_id=key.id if track_key else None, request_id=request.state.request_id,
-                     provider=provider, model=body.model, status_code=200, decision="allow", prompt_hash=prompt_hash)
-    return log, credential, (conn.id if conn else None)
+def _invalid_upstream() -> GatewayError:
+    return GatewayError(502, "upstream_invalid_response", "The provider answered in a way Gateway could not read. The call was not counted.")
 
 
-async def _flag_connection(conn_id: str | None, error: GatewayError) -> None:
-    """The provider rejected a saved key (revoked, expired): show it as failing on the Providers page."""
-    if conn_id and error.code == "provider_auth_failed":
+async def _flag_connection(conn_id: str | None, code: str) -> None:
+    """A saved provider key stopped working (revoked, expired, unreadable): show it as failing on the Providers page."""
+    if conn_id and code in FLAG_CODES:
         async with SessionLocal() as s:
             c = await s.get(ProviderConnection, conn_id)
             if c:
@@ -77,23 +64,68 @@ async def _flag_connection(conn_id: str | None, error: GatewayError) -> None:
                 await s.commit()
 
 
+async def _resolve_upstream(session: AsyncSession, org_id: str, body: UnifiedChatRequest) -> tuple[str, str | None, str | None]:
+    """(provider, credential, connection id): the org's own key if it has one, else the shared platform key (or the dev mock)."""
+    conn = await providers.resolve_connection(session, org_id, body.provider)
+    if conn is None:
+        return pick_provider(body), None, None
+    try:
+        return conn.provider, providers.decrypt_credential(conn.credential_enc, providers.aad_for(conn)), conn.id
+    except (ValueError, InvalidTag):  # corrupted, or encrypted under a key that is no longer configured
+        await _flag_connection(conn.id, "provider_credentials_unreadable")
+        raise GatewayError(502, "provider_credentials_unreadable", "Your saved provider key can't be read any more. Add it again under Providers.") from None
+
+
+def _quota_error() -> GatewayError:
+    return GatewayError(429, "quota_exceeded", "Monthly call quota reached. Upgrade your plan to continue.", {"Retry-After": "3600"})
+
+
+async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool):
+    """Rate limit, quota, provider choice, then reserve the call. Raises GatewayError before anything is sent upstream."""
+    ok, retry = await limiter.allow(key.id, key.rpm_limit)
+    if not ok:
+        raise GatewayError(429, "rate_limited", "Too many requests for this key.", {"Retry-After": str(retry)})
+    org = await session.get(Organization, key.org_id)
+    if await billable_this_month(key.org_id, s=session) >= org.monthly_call_quota:  # cheap early exit
+        raise _quota_error()
+    provider, credential, conn_id = await _resolve_upstream(session, key.org_id, body)
+    body.model = body.model or DEFAULT_MODEL[provider]
+    prompt_hash = hashlib.sha256("\n".join(m.content for m in body.messages).encode()).hexdigest()
+    entry = RequestLog(org_id=key.org_id, key_id=key.id if track_key else None, request_id=request.state.request_id,
+                       provider=provider, model=body.model, status_code=200, decision="pending", prompt_hash=prompt_hash)
+    # Reserve first, then verify. The call is committed as "pending" before anything is sent upstream, so requests that run at
+    # the same time see each other; one that would take the org over its quota backs out. (Counting first and writing the
+    # row after the upstream answers let a burst of in-flight calls all read the same count.)
+    session.add(entry)
+    await session.commit()
+    if await billable_this_month(key.org_id, s=session) > org.monthly_call_quota:
+        await session.delete(entry)
+        await session.commit()
+        raise _quota_error()
+    return entry, credential, conn_id
+
+
 async def _chat(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True) -> UnifiedChatResponse:
-    log, credential, conn_id = await _preflight(request, body, key, session, track_key)
+    entry, credential, conn_id = await _preflight(request, body, key, session, track_key)
     started = time.monotonic()
     try:
-        result = await ADAPTERS[log.provider].execute_chat(body, credential)
-        log.tokens_in, log.tokens_out = result.usage.prompt_tokens, result.usage.completion_tokens
+        result = await ADAPTERS[entry.provider].execute_chat(body, credential)
+        entry.tokens_in, entry.tokens_out, entry.decision = result.usage.prompt_tokens, result.usage.completion_tokens, "allow"
         return result
     except GatewayError as e:
-        log.status_code, log.decision = e.status, "error"
-        await _flag_connection(conn_id, e)
+        entry.status_code, entry.decision = e.status, "error"
+        await _flag_connection(conn_id, e.code)
         raise
+    except Exception as e:  # a malformed upstream response must not be logged, or billed, as a success
+        log.exception("could not process the %s response", entry.provider)
+        entry.status_code, entry.decision = 502, "error"
+        raise _invalid_upstream() from e
     finally:
-        log.latency_ms = int((time.monotonic() - started) * 1000)
+        entry.latency_ms = int((time.monotonic() - started) * 1000)
         if track_key:
             key.last_used_at = dt.datetime.now(dt.timezone.utc)
             session.add(key)
-        session.add(log)
+        session.add(entry)
         await session.commit()
 
 
@@ -110,7 +142,7 @@ def _chunk(rid: str, model: str, delta: dict, finish: str | None = None, usage: 
 async def _write_log(log: RequestLog, key_id: str | None) -> None:
     """The request's DB session is gone once the response has started, so streams log through their own."""
     async with SessionLocal() as s:
-        s.add(log)
+        await s.merge(log)  # the call was reserved as a row by the request's own session; update it
         if key_id:
             k = await s.get(ApiKey, key_id)
             if k:
@@ -118,17 +150,31 @@ async def _write_log(log: RequestLog, key_id: str | None) -> None:
         await s.commit()
 
 
-async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, log: RequestLog, key_id: str | None, started: float):
-    """Yields OpenAI-style chunks. Always writes exactly one log row, even if the client disconnects mid-stream."""
-    rid, p_tokens, c_tokens, emitted, finish = log.request_id, None, None, 0, None
+def _error_event(rid: str, err: GatewayError) -> str:
+    return f"data: {json.dumps({'error': {'code': err.code, 'message': err.message, 'request_id': rid}})}\n\n"
+
+
+def _settle_stream(entry: RequestLog, body: UnifiedChatRequest, started: float, p_tokens: int | None, c_tokens: int | None, emitted: int) -> None:
+    """Final numbers for a stream's log row. Token counts are the provider's when it reported them, else an estimate (chars / 4)."""
+    est_in = sum(len(m.content) for m in body.messages) // 4 + 1
+    entry.tokens_in = p_tokens if p_tokens is not None else est_in
+    entry.tokens_out = c_tokens if c_tokens is not None else emitted // 4 + (1 if emitted else 0)
+    entry.latency_ms = int((time.monotonic() - started) * 1000)
+    if entry.decision == "pending":  # finished normally, or the client left: the call happened and counts
+        entry.decision = "allow"
+
+
+async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, entry: RequestLog, key_id: str | None, started: float):
+    """Yields OpenAI-style chunks. Always settles exactly one log row, even if the client disconnects mid-stream."""
+    rid, p_tokens, c_tokens, emitted, finish = entry.request_id, None, None, 0, None
     try:
-        yield _chunk(rid, log.model, {"role": "assistant"})
+        yield _chunk(rid, entry.model, {"role": "assistant"})
         pending = [first] if first is not None else []
         while True:
             ev = pending.pop() if pending else await gen.__anext__()
             if ev.type == "delta":
                 emitted += len(ev.text)
-                yield _chunk(rid, log.model, {"content": ev.text})
+                yield _chunk(rid, entry.model, {"content": ev.text})
             elif ev.type == "usage":
                 p_tokens = ev.prompt_tokens if ev.prompt_tokens is not None else p_tokens
                 c_tokens = ev.completion_tokens if ev.completion_tokens is not None else c_tokens
@@ -136,45 +182,49 @@ async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, log: Re
                 finish = ev.finish_reason
     except StopAsyncIteration:
         pass
-    except GatewayError as e:  # upstream failed after the stream began: say so in-band, then close
-        log.status_code, log.decision = e.status, "error"
-        yield f"data: {json.dumps({'error': {'code': e.code, 'message': e.message, 'request_id': rid}})}\n\n"
+    except Exception as e:  # upstream failed after the stream began: say so in-band, then close
+        err = e if isinstance(e, GatewayError) else _invalid_upstream()
+        if err is not e:
+            log.exception("could not process the %s stream", entry.provider)
+        entry.status_code, entry.decision = err.status, "error"
+        yield _error_event(rid, err)
         return
-    except (asyncio.CancelledError, GeneratorExit):  # client went away; the call still happened and still counts
-        log.status_code = 499
+    except (asyncio.CancelledError, GeneratorExit):  # client went away
+        entry.status_code = 499
         raise
     finally:
-        est_in = sum(len(m.content) for m in body.messages) // 4 + 1
-        log.tokens_in = p_tokens if p_tokens is not None else est_in
-        log.tokens_out = c_tokens if c_tokens is not None else emitted // 4 + (1 if emitted else 0)
-        log.latency_ms = int((time.monotonic() - started) * 1000)
-        await asyncio.shield(_write_log(log, key_id))
+        _settle_stream(entry, body, started, p_tokens, c_tokens, emitted)
+        await asyncio.shield(_write_log(entry, key_id))
         try:
             await gen.aclose()
         except Exception:
             pass
-    usage = {"prompt_tokens": log.tokens_in, "completion_tokens": log.tokens_out, "total_tokens": log.tokens_in + log.tokens_out}
-    yield _chunk(rid, log.model, {}, finish or "stop", usage)
+    usage = {"prompt_tokens": entry.tokens_in, "completion_tokens": entry.tokens_out, "total_tokens": entry.tokens_in + entry.tokens_out}
+    yield _chunk(rid, entry.model, {}, finish or "stop", usage)
     yield "data: [DONE]\n\n"
 
 
 async def _chat_stream(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True):
-    log, credential, conn_id = await _preflight(request, body, key, session, track_key)
+    entry, credential, conn_id = await _preflight(request, body, key, session, track_key)
     started = time.monotonic()
-    gen = ADAPTERS[log.provider].stream_chat(body, credential)
+    gen = ADAPTERS[entry.provider].stream_chat(body, credential)
+    key_id = key.id if track_key else None
     try:
         first = await gen.__anext__()  # surfaces upstream refusals as a normal HTTP error before any byte is sent
     except StopAsyncIteration:
         first = None
-    except GatewayError as e:
-        log.status_code, log.decision = e.status, "error"
-        log.latency_ms = int((time.monotonic() - started) * 1000)
-        await _flag_connection(conn_id, e)
-        await _write_log(log, key.id if track_key else None)
-        raise
-    return StreamingResponse(
-        _sse(first, gen, body, log, key.id if track_key else None, started), media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    except Exception as e:
+        err = e if isinstance(e, GatewayError) else _invalid_upstream()
+        entry.status_code, entry.decision = err.status, "error"
+        entry.latency_ms = int((time.monotonic() - started) * 1000)
+        await _flag_connection(conn_id, err.code)
+        await _write_log(entry, key_id)
+        if err is e:
+            raise
+        log.exception("could not process the %s stream", entry.provider)
+        raise err from e
+    return StreamingResponse(_sse(first, gen, body, entry, key_id, started), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.post("/v1/chat")

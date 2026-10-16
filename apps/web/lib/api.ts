@@ -35,7 +35,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export type Overview = { calls: number; blocked: number; errors: number; tokens: number; p50_latency_ms: number | null; quota: { used: number; limit: number }; series: { day: string; calls: number; blocked: number; errors: number }[] }
 export type Key = { id: string; name: string; prefix: string; last4: string; rpm_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }
-export type Log = { id: string; request_id: string; ts: string; key_id: string | null; provider: string | null; model: string | null; status_code: number; decision: 'allow' | 'flag' | 'block' | 'error'; risk_score: number | null; tokens_in: number; tokens_out: number; latency_ms: number | null }
+export type Log = { id: string; request_id: string; ts: string; key_id: string | null; provider: string | null; model: string | null; status_code: number; decision: 'allow' | 'flag' | 'block' | 'error' | 'pending'; risk_score: number | null; tokens_in: number; tokens_out: number; latency_ms: number | null }
 
 /** POST that answers with an SSE stream of chat chunks. Calls onDelta for each text piece; resolves with the final usage. */
 export async function apiStream(path: string, body: unknown, onDelta: (t: string) => void, signal?: AbortSignal) {
@@ -49,7 +49,7 @@ export async function apiStream(path: string, body: unknown, onDelta: (t: string
   }
   const reader = res.body.getReader()
   const dec = new TextDecoder()
-  let buf = '', usage: { total_tokens: number } | null = null, model = ''
+  let buf = '', usage: { total_tokens: number } | null = null, model = '', completed = false
   for (;;) {
     const { value, done } = await reader.read()
     if (done) break
@@ -59,7 +59,7 @@ export async function apiStream(path: string, body: unknown, onDelta: (t: string
       const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2)
       if (!line.startsWith('data:')) continue
       const data = line.slice(5).trim()
-      if (data === '[DONE]') return { usage, model }
+      if (data === '[DONE]') { completed = true; return { usage, model } }
       const obj = JSON.parse(data)
       if (obj.error) throw new ApiError(502, obj.error.code, obj.error.message)
       model = obj.model ?? model
@@ -68,6 +68,7 @@ export async function apiStream(path: string, body: unknown, onDelta: (t: string
       if (obj.usage) usage = obj.usage
     }
   }
+  if (!completed) throw new ApiError(502, 'stream_interrupted', 'The response was cut off before it finished. Try again.')
   return { usage, model }
 }
 

@@ -35,8 +35,8 @@ export default function Providers() {
     setBusy(id + path); setMsg(null)
     try { await api(`/api/providers/${id}${path}`, { method }); reload() } catch (err: any) { setMsg(err.message) } finally { setBusy(null) }
   }
-  function remove(c: Conn) {
-    if (confirm(`Remove "${c.label}"? Calls will fall back to the next key, or to the shared provider.`)) act(c.id, '', 'DELETE')
+  async function remove(c: Conn) {
+    if (confirm(`Remove "${c.label}"? Calls will fall back to the next key, or to the shared provider.`)) await act(c.id, '', 'DELETE')
   }
 
   return <>

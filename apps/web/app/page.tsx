@@ -29,7 +29,7 @@ export default function Home() {
     <Section>
       <h2 className="mb-12 text-center text-[40px] font-bold leading-[44px] tracking-tight">Key. Call. Govern.</h2>
       <ol className="grid gap-8 md:grid-cols-3">
-        {[['Key', 'Create a Gateway key in the dashboard. It is shown once and stored only as a hash.'], ['Call', 'Send a chat request to one endpoint. Same shape whichever provider sits behind it.'], ['Govern', 'Every call is authenticated, rate limited, checked against your quota, and written to your audit log.']].map(([t, d], i) =>
+        {[['Key', 'Create a Gateway key in the dashboard. It is shown once and stored only as a hash.'], ['Call', 'Send a chat request to one endpoint. Same shape whichever provider sits behind it.'], ['Govern', 'Every call is authenticated, rate limited and checked against your quota. Calls that go through are written to your audit log.']].map(([t, d], i) =>
           <li key={t} className="rounded-lg border border-border bg-surface-raised p-6 shadow-card"><span className="text-sm text-text-muted">0{i + 1}</span><h3 className="mt-2 text-xl font-semibold">{t}</h3><p className="mt-2 text-text-muted">{d}</p></li>)}
       </ol>
     </Section>

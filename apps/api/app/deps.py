@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 import jwt
@@ -40,7 +41,7 @@ _jwks = None
 def _jwks_client():
     global _jwks
     if _jwks is None:
-        _jwks = jwt.PyJWKClient(settings.AUTH_JWKS_URL, cache_keys=True, lifespan=3600)
+        _jwks = jwt.PyJWKClient(settings.AUTH_JWKS_URL, cache_keys=True, lifespan=3600, timeout=5)
     return _jwks
 
 
@@ -93,7 +94,8 @@ async def get_principal(request: Request, session: AsyncSession = Depends(get_se
         header = request.headers.get("authorization", "")
         if not header.lower().startswith("bearer "):
             raise GatewayError(401, "missing_session", "Sign in to continue.")
-        claims = _verify_jwt(header.split(" ", 1)[1])
+        # PyJWKClient fetches keys with blocking I/O on a cache miss: keep that off the event loop
+        claims = await asyncio.to_thread(_verify_jwt, header.split(" ", 1)[1])
         ext_org, role = _org_and_role(claims)
         ext_user, email = claims["sub"], claims.get("email", "")
 

@@ -17,15 +17,22 @@ from app.routers import account, billing, control, data, export, providers as pr
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
+def check_production_settings() -> None:
+    """The API refuses to start in production with settings that would silently weaken security."""
+    if not settings.AUTH_JWKS_URL or not settings.AUTH_ISSUER:
+        raise RuntimeError("ENV=prod requires AUTH_JWKS_URL and AUTH_ISSUER")
+    if not settings.CREDENTIAL_ENCRYPTION_KEY:
+        raise RuntimeError("ENV=prod requires CREDENTIAL_ENCRYPTION_KEY")
+    if not settings.REDIS_URL:
+        raise RuntimeError("ENV=prod requires REDIS_URL for shared rate limits")
+    if settings.STRIPE_SECRET_KEY and not settings.STRIPE_WEBHOOK_SECRET:
+        raise RuntimeError("ENV=prod with Stripe enabled requires STRIPE_WEBHOOK_SECRET (an empty secret makes forged webhooks verifiable)")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if settings.ENV == "prod":  # prod uses Alembic migrations; refuse unsafe config
-        if not settings.AUTH_JWKS_URL or not settings.AUTH_ISSUER:
-            raise RuntimeError("ENV=prod requires AUTH_JWKS_URL and AUTH_ISSUER")
-        if not settings.CREDENTIAL_ENCRYPTION_KEY:
-            raise RuntimeError("ENV=prod requires CREDENTIAL_ENCRYPTION_KEY")
-        if not settings.REDIS_URL:
-            raise RuntimeError("ENV=prod requires REDIS_URL for shared rate limits")
+        check_production_settings()
     else:
         await init_db()
     task = asyncio.create_task(retention_loop()) if settings.RETENTION_JOB_ENABLED else None

@@ -8,7 +8,7 @@ import { useApi } from '@/lib/use-fetch'
 function Logs() {
   const sp = useSearchParams()
   const [decision, setDecision] = useState(sp.get('decision') ?? '')
-  const { data, error, loading, reload } = useApi<{ items: Log[] }>(`/api/logs?limit=100${decision ? `&decision=${decision}` : ''}`)
+  const { data, error, loading, reload } = useApi<{ items: Log[] }>(`/api/logs?limit=100${decision ? `&decision=${encodeURIComponent(decision)}` : ''}`)
   const [sel, setSel] = useState<Log | null>(null)
   const opener = useRef<HTMLElement | null>(null)
   const open = (l: Log, el: HTMLElement) => { opener.current = el; setSel(l) }

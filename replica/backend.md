@@ -20,7 +20,7 @@
 6. **Resend** + sending domain (SPF/DKIM) when email is added.
 
 ## Not built yet
-policies/DLP/injection, usage rollups, quota emails, webhooks out, invites from inside Gateway (they live in the NEXORA account).
+policies/DLP/injection, quota emails, webhooks out, invites from inside Gateway (they live in the NEXORA account).
 
 ## Security checklist
 - [x] secrets only in env vars; `.env*` ignored; `.env.example` has no values; nothing secret in the web bundle (only `NEXT_PUBLIC_API_BASE`, dev flag)
@@ -39,7 +39,7 @@ policies/DLP/injection, usage rollups, quota emails, webhooks out, invites from 
 ## Known gaps worth fixing before launch
 - Playground rate-limit key is per member but the limiter is the per-key limiter; fine for now.
 - `request_logs` writes happen in the request path (one commit per call). Move to a queue at scale.
-- Quota check counts logs per call (indexed by org_id, ts). OK for MVP; use a Redis counter later.
+- Quota is counted from logs plus rollups (indexed by org_id, ts), and since the review fixes below calls are reserved before dispatch.
 
 ## SSO handoff (2026-10-14)
 Found by reading the public sign-in page: account.onenexora.com is a **Clerk production instance** (frontend API `clerk.onenexora.com`, issuer `https://clerk.onenexora.com`, JWKS reachable and RS256).
@@ -66,7 +66,7 @@ Found by reading the public sign-in page: account.onenexora.com is a **Clerk pro
 - Postgres-safety: grouped by label (bind-parameter expressions repeated in GROUP BY are rejected by Postgres) and UTC day bucketing via `timezone('UTC', ts)`; compiled for the Postgres dialect but **not run against a real Postgres**.
 - Web (`/app/usage`): By key / By model / By day, date range with 7/30/90-day presets, totals row, daily chart with empty days shown as gaps, CSV download, empty/error/invalid-range states.
 - Tests: 7 new (44 total): grouping, inclusive ranges, validation, org isolation, unattributed calls, CSV. Checked in the browser against seeded data.
-- Still no cost: token counts only. Reads live from `request_logs`; add the `usage_daily` rollup when an org passes ~1M rows.
+- Still no cost: token counts only. Usage reads `request_logs` plus the `usage_daily` rollups that retention writes (see Retention and deletion below), so history outlives log retention.
 
 ## Retention and deletion (2026-10-14)
 **Retention** (`app/retention.py`): free 7 days, starter 30, team 90, enterprise 365. A daily in-process job (and `python -m app.retention` for a cron) rolls whole UTC days older than the window into `usage_daily` (counts per org/day/key/model: no content) and deletes those logs and their security events, one transaction per day. Merge, not replace, if a straggler log arrives for a rolled-up day. A day is therefore in exactly one place, and usage/overview/quota read both (`app/usage.py`). Quota previously counted live logs only, which would have reset the month's usage when logs were purged; it now adds rolled-up billable calls. Effective retention is the window plus up to 24h. Latency p50 on the overview only covers retained logs. Verified: 9 tests, plus a real SQLite run (40 old logs purged, usage totals identical before and after).
@@ -100,3 +100,16 @@ Limits: deletes are single statements per org (large orgs would want batching); 
 - **Important limit**: suspension does **not** revoke the organization's API keys (they belong to the org, not a person). The Team page says so and points to key rotation.
 - **Why suspend and not remove**: removing a Gateway row would be undone at the person's next sign-in (they are still in the account's organization and would be re-provisioned). Suspension is the Gateway-level control that survives that; true removal is done in the NEXORA account, and the `organizationMembership.deleted` webhook then deletes the row.
 - Tests: 9 API tests (rules, isolation, suspension and data rights, validation) and 3 browser tests plus 2 axe scans. 93 API + 75 browser total.
+
+## Review fixes (2026-10-16)
+Findings from the PR review and the SonarCloud quality gate, each verified against the code before changing it:
+- **Quota can no longer be overshot by concurrent calls.** A call is committed as `pending` before it is sent upstream; requests that run at the same time see each other, and one that would exceed the quota removes its own reservation and gets 429. At the exact boundary two racing calls can both back out (conservative), never both get in. Stale `pending` rows (process died mid-call) are settled as errors after 15 minutes by the retention job. The Pill shows "In progress".
+- **Unexpected upstream failures** (a response Gateway cannot parse) are logged as errors with 502 `upstream_invalid_response` and do not count toward quota, on both the normal and the streaming path (in-band error event).
+- **Saved provider key unreadable** (corrupted, or `CREDENTIAL_ENCRYPTION_KEY` changed): 502 `provider_credentials_unreadable` telling the user to re-add it, connection flagged failing.
+- **Concurrent provider adds**: the database arbitrates the single default (a loser falls back to non-default) and the 10-key cap is re-checked after insert.
+- **Stripe webhook** refuses all requests (503) when `STRIPE_WEBHOOK_SECRET` is empty, and production refuses to boot with Stripe enabled but no webhook secret. Before this, an empty secret made forged signatures computable.
+- **JWT verification** runs in a worker thread with a 5 s JWKS timeout; PyJWT floor raised to 2.14 (the review cited advisories fixed in 2.12 and 2.14; the lock pins 2.15.1).
+- **CSV export** neutralises formulas after leading spaces and for leading newlines.
+- **Migration** `unique member per org` now deletes duplicate members first (keeps the oldest row per person) so it cannot fail on data created by the earlier race.
+- **Supply chain (Sonar)**: `requirements.lock` / `requirements-dev.lock` are hash-pinned; CI and the Dockerfile install with `--require-hashes --only-binary :all:`; `npm ci --ignore-scripts`; no `npx` in CI; the image runs as a non-root user and copies only `app/`, `migrations/` and `alembic.ini`. Not verified: a real `docker build` (needs a base-image download).
+- Web: query value encoded, usage ranges over 366 days stopped client-side, a stream that ends without `[DONE]` is reported as cut off, floating promises awaited, data-handling and landing copy corrected (rejected calls are not in the audit log; member emails are stored when the account provides one).

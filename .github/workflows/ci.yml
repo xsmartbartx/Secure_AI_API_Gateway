@@ -31,7 +31,8 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: apps/api/requirements.txt
-      - run: pip install -r requirements.txt pyflakes pip-audit
+      - name: Install (hash-pinned, wheels only: no build scripts run)
+        run: pip install --require-hashes --only-binary :all: -r requirements-dev.lock
       - name: Lint (unused imports and names)
         run: python -m pyflakes app
       - name: Tests
@@ -44,7 +45,7 @@ jobs:
           alembic check
           alembic downgrade base
       - name: Dependency audit
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r requirements.lock --no-deps --disable-pip
 
   web:
     name: Web (typecheck, build, audit)
@@ -60,8 +61,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
-      - run: npx tsc --noEmit
+      - run: npm ci --ignore-scripts
+      - name: Typecheck
+        run: npm run typecheck
       - name: Production build
         run: npm run build
         env:
@@ -89,13 +91,13 @@ jobs:
         working-directory: apps/api
         run: |
           python -m venv .venv
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install --require-hashes --only-binary :all: -r requirements.lock
       - name: Web dependencies
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Run the suite (real Chrome is preinstalled on GitHub's Ubuntu runners)
         working-directory: apps/web
-        run: npx playwright test --reporter=list,html
+        run: npm run e2e -- --reporter=list,html
       - name: Keep the report when something fails
         if: failure()
         uses: actions/upload-artifact@v4

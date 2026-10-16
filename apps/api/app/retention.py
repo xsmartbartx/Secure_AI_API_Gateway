@@ -4,7 +4,7 @@ import asyncio
 import datetime as dt
 import logging
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, update
 
 from app.config import settings
 from app.db import Organization, RequestLog, SecurityEvent, SessionLocal, UsageDaily
@@ -50,8 +50,21 @@ async def purge_org(org_id: str, plan: str, now: dt.datetime) -> int:
     return deleted
 
 
+STALE_PENDING_MINUTES = 15
+
+
+async def settle_stale_pending(now: dt.datetime) -> int:
+    """A call is reserved as 'pending' before it is sent upstream. If the process died mid-call the row never settles; after a
+    grace period (longer than any call) mark it as an error so it stops counting toward the quota and shows honestly in the logs."""
+    async with SessionLocal() as s, s.begin():
+        res = await s.execute(update(RequestLog).where(RequestLog.decision == "pending", RequestLog.ts < now - dt.timedelta(minutes=STALE_PENDING_MINUTES))
+                              .values(decision="error", status_code=500))
+        return res.rowcount
+
+
 async def purge_expired(now: dt.datetime | None = None) -> dict:
     now = now or dt.datetime.now(dt.timezone.utc)
+    stale = await settle_stale_pending(now)
     async with SessionLocal() as s:
         orgs = [(o.id, o.plan) for o in (await s.execute(select(Organization))).scalars()]
     total = 0
@@ -61,7 +74,7 @@ async def purge_expired(now: dt.datetime | None = None) -> dict:
         except Exception:  # one bad org must not stop the others
             log.exception("retention purge failed for org %s", org_id)
     log.info("retention purge deleted %d log rows across %d orgs", total, len(orgs))
-    return {"orgs": len(orgs), "logs_deleted": total}
+    return {"orgs": len(orgs), "logs_deleted": total, "stale_settled": stale}
 
 
 async def retention_loop() -> None:

@@ -25,7 +25,9 @@ export default function UsagePage() {
   const [from, setFrom] = useState(utcDay(-29))
   const [to, setTo] = useState(utcDay())
   const [err, setErr] = useState<string | null>(null)
-  const valid = from <= to
+  const span = (Date.parse(to) - Date.parse(from)) / 86_400_000
+  const orderOk = from <= to
+  const valid = orderOk && span <= 366 // the API refuses longer ranges
   const qs = `from=${from}&to=${to}&group=${group}`
   const { data, error, loading, reload } = useApi<Usage>(valid ? `/api/usage?${qs}` : '/api/usage?group=' + group)
 
@@ -48,7 +50,7 @@ export default function UsagePage() {
       <div><label htmlFor="to" className="mb-1 block text-xs font-medium text-text-muted">To</label>
         <input id="to" type="date" value={to} min={from} max={utcDay()} onChange={e => setTo(e.target.value)} className="h-10 rounded-md border border-border-input bg-bg px-3" /></div>
       <div className="flex gap-2">{[7, 30, 90].map(d => <Button key={d} size="sm" variant="ghost" onClick={() => preset(d)}>Last {d}d</Button>)}</div>
-      {!valid && <p role="alert" className="w-full text-sm text-danger">"From" must not be after "To".</p>}
+      {!valid && <p role="alert" className="w-full text-sm text-danger">{orderOk ? 'Choose a range of 366 days or less.' : '"From" must not be after "To".'}</p>}
     </Card>
     {err && <p role="alert" className="mb-4 text-sm text-danger">{err}</p>}
 

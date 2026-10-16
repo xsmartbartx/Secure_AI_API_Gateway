@@ -91,7 +91,9 @@ async def test_ciphertext_is_bound_to_its_row():
     assert providers.decrypt_credential(blob, aad="conn-1:org-1") == "sk-secret"
     with pytest.raises(Exception):
         providers.decrypt_credential(blob, aad="conn-2:org-1")  # moved to another row/org
-    assert providers.encrypt_credential("sk-secret", aad="x") != providers.encrypt_credential("sk-secret", aad="x")  # fresh nonce each time
+    first = providers.encrypt_credential("sk-secret", aad="x")
+    second = providers.encrypt_credential("sk-secret", aad="x")
+    assert first != second  # a fresh nonce for every value
 
 
 async def test_rejected_key_is_not_stored(client):

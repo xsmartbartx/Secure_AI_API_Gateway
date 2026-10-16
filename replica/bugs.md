@@ -15,7 +15,7 @@ Steps: create key, call /v1/chat, GET /api/logs. Expected `ts` like `2026-10-13T
 
 ## To check (not reproduced / not bugs yet)
 - T1 `/docs` and `/openapi.json` are public on the API. Decide whether to keep for developers or disable in prod.
-- T2 Quota check is count-per-call (race: concurrent calls can overshoot by a few). Acceptable for MVP; use a Redis counter.
+- T2 ~~Quota race~~ fixed 2026-10-16: calls are reserved before dispatch (see backend.md, Review fixes).
 - T3 Key rotate has no UI and no explicit test that the old key keeps working until revoked.
 - T4 Revoke uses browser `confirm()`; replace with the spec'd dialog (types key name). (Covered by e2e as a native dialog; update the test when replaced.)
 - T5 Mobile nav drawer has no backdrop; tapping outside does not close it.

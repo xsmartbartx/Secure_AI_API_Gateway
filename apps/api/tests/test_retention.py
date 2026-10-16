@@ -135,3 +135,15 @@ async def test_old_rollup_from_previous_month_does_not_count(client):
     await log(org, key, dt.datetime(2026, 9, 3, 12, tzinfo=dt.timezone.utc))
     await purge_expired(NOW)
     assert await billable_this_month(org, NOW) == 0
+
+
+async def test_stale_pending_calls_are_settled_as_errors(client):
+    org, key = await org_and_key(client)
+    await log(org, key, NOW - dt.timedelta(minutes=20), decision="pending")   # the process died mid-call
+    await log(org, key, NOW - dt.timedelta(minutes=2), decision="pending")    # still in flight
+    res = await purge_expired(NOW)
+    assert res["stale_settled"] == 1
+    async with SessionLocal() as s:
+        decisions = sorted((await s.execute(select(RequestLog.decision))).scalars().all())
+    assert decisions == ["error", "pending"]
+    assert await billable_this_month(org, NOW) == 1  # only the call that may still be running counts

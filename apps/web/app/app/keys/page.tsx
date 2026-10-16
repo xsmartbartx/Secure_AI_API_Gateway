@@ -28,7 +28,7 @@ export default function KeysPage() {
       <p className="font-semibold text-warning">Copy your new key now. You won't see it again.</p>
       <code className="mt-2 block break-all rounded bg-bg p-3 font-mono text-[13px] text-text">{secret}</code>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(secret)}>Copy</Button>
+        <Button size="sm" variant="secondary" onClick={async () => { try { await navigator.clipboard?.writeText(secret) } catch { /* clipboard blocked */ } }}>Copy</Button>
         <label className="flex items-center gap-2 text-sm text-text"><input type="checkbox" checked={stored} onChange={e => setStored(e.target.checked)} /> I stored it somewhere safe</label>
         <Button size="sm" disabled={!stored} onClick={() => setSecret(null)}>Done</Button>
       </div></div>}

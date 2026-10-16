@@ -29,8 +29,8 @@ export default function Team() {
     try { await api(`/api/members/${m.id}`, { method: 'PATCH', body: JSON.stringify(body) }); reload() }
     catch (e: any) { setMsg(e.message) } finally { setBusy(null) }
   }
-  function suspend(m: Member) {
-    if (confirm(`Suspend ${m.email}? They lose access to this organization in Gateway right away. You can restore them later.`)) change(m, { status: 'suspended' })
+  async function suspend(m: Member) {
+    if (confirm(`Suspend ${m.email}? They lose access to this organization in Gateway right away. You can restore them later.`)) await change(m, { status: 'suspended' })
   }
 
   return <>

@@ -1,5 +1,5 @@
 'use client'
-import { AlertTriangle, Check, Copy, Inbox, ShieldX, X } from 'lucide-react'
+import { AlertTriangle, Check, CircleDashed, Copy, Inbox, ShieldX, X } from 'lucide-react'
 import { ButtonHTMLAttributes, ReactNode, useState } from 'react'
 
 const cx = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(' ')
@@ -22,8 +22,8 @@ export function PageHeader({ title, description, action }: { title: string; desc
     <div><h1 className="text-[28px] leading-[34px] font-semibold">{title}</h1>{description && <p className="mt-1 text-text-muted">{description}</p>}</div>{action}</div>
 }
 
-export function Pill({ decision }: { decision: 'allow' | 'flag' | 'block' | 'error' }) {
-  const m = { allow: ['bg-success-subtle text-success', Check, 'Allowed'], flag: ['bg-warning-subtle text-warning', AlertTriangle, 'Flagged'], block: ['bg-danger-subtle text-danger', ShieldX, 'Blocked'], error: ['bg-surface text-text-muted', X, 'Error'] } as const
+export function Pill({ decision }: { decision: 'allow' | 'flag' | 'block' | 'error' | 'pending' }) {
+  const m = { allow: ['bg-success-subtle text-success', Check, 'Allowed'], flag: ['bg-warning-subtle text-warning', AlertTriangle, 'Flagged'], block: ['bg-danger-subtle text-danger', ShieldX, 'Blocked'], error: ['bg-surface text-text-muted', X, 'Error'], pending: ['bg-surface text-text-muted', CircleDashed, 'In progress'] } as const
   const [c, Icon, label] = m[decision]
   return <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', c)}><Icon size={12} aria-hidden />{label}</span>
 }
@@ -43,7 +43,7 @@ export function CodeBlock({ code, label }: { code: string; label?: string }) {
   return <div className="relative overflow-hidden rounded-md border border-border bg-nav-bg text-nav-text">
     {label && <div className="border-b border-border/30 px-4 py-2 text-xs text-nav-text">{label}</div>}
     <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-5"><code>{code}</code></pre>
-    <button aria-label="Copy code" onClick={() => { navigator.clipboard?.writeText(code); setDone(true); setTimeout(() => setDone(false), 1500) }}
+    <button aria-label="Copy code" onClick={async () => { try { await navigator.clipboard?.writeText(code); setDone(true); setTimeout(() => setDone(false), 1500) } catch { /* clipboard blocked: nothing to confirm */ } }}
       className="absolute right-2 top-2 rounded p-2 text-nav-text hover:text-nav-active">{done ? <Check size={16} /> : <Copy size={16} />}</button></div>
 }
 

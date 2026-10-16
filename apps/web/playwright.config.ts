@@ -30,7 +30,7 @@ export default defineConfig({
       },
     },
     {
-      command: 'npm run build && npx next start -p 3411',
+      command: 'npm run build && npm run start -- -p 3411',
       url: WEB,
       reuseExistingServer: !!process.env.PW_REUSE, // never silently test whatever else is listening on the port
       timeout: 240_000,
