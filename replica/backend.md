@@ -20,7 +20,7 @@
 6. **Resend** + sending domain (SPF/DKIM) when email is added.
 
 ## Not built yet
-policies/DLP/injection, quota emails, webhooks out, invites from inside Gateway (they live in the NEXORA account).
+DLP/injection detection and other policy types, quota emails, webhooks out, invites from inside Gateway (they live in the NEXORA account).
 
 ## Security checklist
 - [x] secrets only in env vars; `.env*` ignored; `.env.example` has no values; nothing secret in the web bundle (only `NEXT_PUBLIC_API_BASE`, dev flag)
@@ -113,3 +113,12 @@ Findings from the PR review and the SonarCloud quality gate, each verified again
 - **Migration** `unique member per org` now deletes duplicate members first (keeps the oldest row per person) so it cannot fail on data created by the earlier race.
 - **Supply chain (Sonar)**: `requirements.lock` / `requirements-dev.lock` are hash-pinned; CI and the Dockerfile install with `--require-hashes --only-binary :all:`; `npm ci --ignore-scripts`; no `npx` in CI; the image runs as a non-root user and copies only `app/`, `migrations/` and `alembic.ini`. Not verified: a real `docker build` (needs a base-image download).
 - Web: query value encoded, usage ranges over 366 days stopped client-side, a stream that ends without `[DONE]` is reported as cut off, floating promises awaited, data-handling and landing copy corrected (rejected calls are not in the audit log; member emails are stored when the account provides one).
+
+## Policies: model allow-list (2026-10-16)
+- **Model**: `policies` (org, type, mode off|monitor|enforce, JSON config, version; unique per org and type) with one type so far, `model_allow` (`{"models": [glob patterns]}`). Migration included.
+- **Patterns**: letters, digits and `. _ : / - * ?` only (no character classes), lowercased, de-duplicated, at most 50 entries of 100 characters and 5 wildcards each; matching is case-insensitive. An exact entry is exact (`gpt-4o` does not match `gpt-4o-mini`). Turning the policy on (monitor or enforce) with an empty list is refused, because an empty enforced list would block every call.
+- **Enforcement point**: in preflight after rate limit, quota and provider choice, on the *effective* model (the default if the call names none), before anything is sent upstream or a call is reserved. Enforce: 403 `model_not_allowed`, logged as decision `block` with a `policy_denied` security event; a blocked call is **not billable** and does not use quota (the billing count and the retention rollup both exclude `block`). Monitor: the call proceeds, its log decision is `flag` and a `policy_would_deny` event is recorded. Streaming checks before the first byte; the playground obeys the policy too.
+- **API**: `GET /api/policies` (viewer+), `PUT /api/policies/model_allow` (admin+, bumps the version, changes logged with ids only), `POST /api/policies/model_allow/test` (admin+, dry run against the saved policy). Policies are included in the data export and deleted with the organization.
+- **UI**: Policies page (mode, list, save with a confirmation before enforcing, "try a model name", read-only for non-admins); Logs gets a Flagged filter; Security events show readable labels and the model name; the Overview "Blocked" tile counts blocks.
+- **Tests**: 15 API tests (validation, normalisation, roles, enforce/monitor/off, default model, streaming, quota exclusion, rollups, isolation, playground, export and deletion) and 4 browser tests (enforce end to end into logs, security and overview with an axe scan; monitor; validation message; developer read-only). 129 API + 79 browser total.
+- **Limits**: the policy is read from the database on every call (one extra query; add a short cache before heavy traffic); it judges only the model name, not the prompt (DLP and injection detection are separate, unbuilt); changes apply to the next call, not to calls already in flight; there are no per-key policies yet.

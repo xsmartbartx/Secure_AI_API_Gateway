@@ -30,7 +30,7 @@ async def purge_org(org_id: str, plan: str, now: dt.datetime) -> int:
             model = func.coalesce(RequestLog.model, "unknown")
             agg = (await s.execute(
                 select(RequestLog.key_id, model, func.count(),
-                       func.sum(case((RequestLog.decision != "error", 1), else_=0)),
+                       func.sum(case((RequestLog.decision.notin_(("error", "block")), 1), else_=0)),
                        func.sum(case((RequestLog.decision == "block", 1), else_=0)),
                        func.sum(case((RequestLog.decision == "error", 1), else_=0)),
                        func.sum(RequestLog.tokens_in), func.sum(RequestLog.tokens_out))

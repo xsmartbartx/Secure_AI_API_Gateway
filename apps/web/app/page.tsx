@@ -36,11 +36,11 @@ export default function Home() {
     <Section className="bg-surface">
       <h2 className="text-[28px] font-semibold leading-[34px]">What is real today</h2>
       <ul className="mt-6 grid gap-3 text-base md:grid-cols-2">
-        {['One governed endpoint and one key in front of your provider', 'Authentication, rate limiting, and monthly quota on every call', 'Request logs with decision, latency, and token counts, and a prompt hash instead of prompt text', 'Your own Anthropic or OpenAI key, checked and stored encrypted','A playground to test prompts without a key'].map(x => <li key={x} className="flex gap-3"><span className="text-success" aria-hidden>✓</span>{x}</li>)}
+        {['One governed endpoint and one key in front of your provider', 'Authentication, rate limiting, and monthly quota on every call', 'Request logs with decision, latency, and token counts, and a prompt hash instead of prompt text', 'Your own Anthropic or OpenAI key, checked and stored encrypted','Model allow-lists, in monitor or enforce mode','A playground to test prompts without a key'].map(x => <li key={x} className="flex gap-3"><span className="text-success" aria-hidden>✓</span>{x}</li>)}
       </ul>
       <h2 className="mt-12 text-[28px] font-semibold leading-[34px]">On the roadmap</h2>
       <ul className="mt-6 grid gap-3 text-base text-text-muted md:grid-cols-2">
-        {['Routing rules and fallback across providers', 'Model allowlist and policy engine', 'Data loss prevention and prompt-injection detection', 'SIEM export and webhooks'].map(x => <li key={x} className="flex gap-3"><span aria-hidden>○</span>{x}</li>)}
+        {['Routing rules and fallback across providers', 'More policies, such as per-key rules and spend limits', 'Data loss prevention and prompt-injection detection', 'SIEM export and webhooks'].map(x => <li key={x} className="flex gap-3"><span aria-hidden>○</span>{x}</li>)}
       </ul>
     </Section>
     <Section>

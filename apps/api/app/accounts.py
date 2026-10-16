@@ -4,7 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db import (ApiKey, Member, Organization, ProviderConnection, RequestLog, SecurityEvent, Subscription, UsageDaily)
+from app.db import (ApiKey, Member, Organization, Policy, ProviderConnection, RequestLog, SecurityEvent, Subscription, UsageDaily)
 from app.errors import GatewayError
 from app.routers import billing
 
@@ -31,6 +31,7 @@ async def delete_org_data(s: AsyncSession, org_id: str) -> None:
     await s.execute(delete(SecurityEvent).where(SecurityEvent.org_id == org_id))
     await s.execute(delete(RequestLog).where(RequestLog.org_id == org_id))
     await s.execute(delete(UsageDaily).where(UsageDaily.org_id == org_id))
+    await s.execute(delete(Policy).where(Policy.org_id == org_id))
     await s.execute(delete(ProviderConnection).where(ProviderConnection.org_id == org_id))  # the customers' provider keys
     await s.execute(delete(ApiKey).where(ApiKey.org_id == org_id))
     await s.execute(delete(Subscription).where(Subscription.org_id == org_id))

@@ -16,7 +16,7 @@ function Logs() {
   return <>
     <PageHeader title="Logs" description="Every call, with its decision. Prompt text is never stored, only a hash."
       action={<div><label htmlFor="d" className="sr-only">Filter by decision</label><select id="d" value={decision} onChange={e => setDecision(e.target.value)} className="h-10 rounded-md border border-border-input bg-bg px-3">
-        <option value="">All decisions</option><option value="allow">Allowed</option><option value="block">Blocked</option><option value="error">Errors</option></select></div>} />
+        <option value="">All decisions</option><option value="allow">Allowed</option><option value="block">Blocked</option><option value="flag">Flagged</option><option value="error">Errors</option></select></div>} />
     <Card className="overflow-x-auto">
       {loading && <div className="space-y-3 p-4">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-6" />)}</div>}
       {error && <ErrorState message={error.message} onRetry={reload} />}

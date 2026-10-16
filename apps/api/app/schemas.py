@@ -9,7 +9,7 @@ class ChatMessage(BaseModel):
 
 
 class UnifiedChatRequest(BaseModel):
-    model: str | None = None
+    model: str | None = Field(None, max_length=200)
     provider: str | None = None
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=200)
     temperature: float | None = Field(0.7, ge=0.0, le=2.0)

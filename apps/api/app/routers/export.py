@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 
-from app.db import (ApiKey, Member, Organization, ProviderConnection, RequestLog, SecurityEvent, SessionLocal, Subscription, UsageDaily)
+from app.db import (ApiKey, Member, Organization, Policy, ProviderConnection, RequestLog, SecurityEvent, SessionLocal, Subscription, UsageDaily)
 from app.deps import Principal, require
 from app.errors import GatewayError
 from app.ratelimit import limiter
@@ -53,7 +53,7 @@ async def _export(org_id: str):
         org = await s.get(Organization, org_id)
         yield '{"generated_at": %s, "notes": %s, "organization": %s' % (_dump(dt.datetime.now(dt.timezone.utc).isoformat()), _dump(NOTES), _dump(_row(org)))
         for name, model in (("members", Member), ("api_keys", ApiKey), ("provider_connections", ProviderConnection),
-                            ("usage_daily", UsageDaily), ("security_events", SecurityEvent), ("request_logs", RequestLog)):
+                            ("policies", Policy), ("usage_daily", UsageDaily), ("security_events", SecurityEvent), ("request_logs", RequestLog)):
             yield f', "{name}": ['
             first = True
             async for row in _all(s, model, org_id):

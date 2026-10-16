@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, TypeDecorator, UniqueConstraint, text
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, TypeDecorator, UniqueConstraint, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -134,6 +134,20 @@ class ProviderConnection(Base):
     status: Mapped[str] = mapped_column(String, default="untested")  # untested | ok | failing
     created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
     __table_args__ = (Index("one_default_provider_per_org", "org_id", unique=True, sqlite_where=text("is_default"), postgresql_where=text("is_default")),)
+
+
+class Policy(Base):
+    """An organization's rule set for one policy type. type 'model_allow': config {"models": [glob patterns]}."""
+    __tablename__ = "policies"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str] = mapped_column(String)
+    mode: Mapped[str] = mapped_column(String, default="off")  # off | monitor | enforce
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
+    updated_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
+    __table_args__ = (UniqueConstraint("org_id", "type", name="uq_policies_org_type"),)
 
 
 class UsageDaily(Base):

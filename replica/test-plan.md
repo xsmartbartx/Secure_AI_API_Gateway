@@ -51,3 +51,5 @@ Update (providers): 69 browser tests now (added provider-key CRUD, developer rea
 Update (export): 71 browser tests, 84 API tests.
 
 Update (team): 75 browser tests, 93 API tests.
+
+Update (policies): 79 browser tests, 129 API tests.

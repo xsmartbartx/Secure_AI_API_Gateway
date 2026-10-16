@@ -54,7 +54,7 @@ async def billable_this_month(org_id: str, now: dt.datetime | None = None, s: As
 
     async def run(sess: AsyncSession) -> int:
         live = (await sess.execute(select(func.count()).select_from(RequestLog).where(
-            RequestLog.org_id == org_id, RequestLog.ts >= utc_midnight(first), RequestLog.decision != "error"))).scalar_one()
+            RequestLog.org_id == org_id, RequestLog.ts >= utc_midnight(first), RequestLog.decision.notin_(("error", "block"))))).scalar_one()
         rolled = (await sess.execute(select(func.coalesce(func.sum(UsageDaily.billable), 0)).where(
             UsageDaily.org_id == org_id, UsageDaily.day >= first))).scalar_one()
         return int(live) + int(rolled)

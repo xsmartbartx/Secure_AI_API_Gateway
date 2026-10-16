@@ -211,7 +211,7 @@ async def security_events(p: Principal = Depends(require("viewer")), s: AsyncSes
     rows = (await s.execute(select(SecurityEvent).where(SecurityEvent.org_id == p.org.id)
                             .order_by(SecurityEvent.ts.desc()).limit(100))).scalars().all()
     return {"items": [{"id": e.id, "type": e.type, "severity": e.severity, "rule_id": e.rule_id, "ts": e.ts,
-                       "log_id": e.log_id} for e in rows]}
+                       "log_id": e.log_id, "excerpt": e.redacted_excerpt} for e in rows]}
 
 
 class PlaygroundBody(BaseModel):

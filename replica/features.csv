@@ -21,11 +21,11 @@ Entitlement/quota enforcement,api,must,yes,yes,
 Audit logging (no raw prompt by default),api,must,yes,yes,
 Multi-provider routing (OpenAI/Anthropic/Azure OpenAI),api,should,no,partial,"per-org keys for Anthropic + OpenAI, choose by request `provider` or org default; no fallback/routing rules, no Azure OpenAI"
 Provider credential vault page,dashboard,should,no,yes,"bring your own Anthropic/OpenAI key: verified with the provider, AES-GCM encrypted, never returned; default + test + remove; no custom base URL (SSRF) yet"
-Model allowlist policy,policy,should,no,no,roadmap on live
+Model allowlist policy,policy,should,no,yes,"glob patterns per org, off/monitor/enforce, checked before dispatch (default model too), blocked calls logged + security event + not billed, dry-run tester"
 DLP masking/blocking (email/card/IBAN/PESEL/secrets),security,should,no,no,from architecture doc
 Prompt injection detection (monitor mode first),security,should,no,no,
 Risk score + decision,security,could,no,no,
-Security events feed,dashboard,should,no,partial,empty state; no detectors yet
+Security events feed,dashboard,should,no,partial,shows policy blocks and monitor flags; DLP/injection detectors not built
 Team + RBAC,dashboard,should,no,yes,"member list, role changes (owner all, admin only developer/viewer), reversible suspend, self-edit blocked; invites stay in the NEXORA account"
 Webhooks / SIEM export,integration,could,no,no,Splunk/Sentinel/Elastic
 Status page,site,should,yes,no,
