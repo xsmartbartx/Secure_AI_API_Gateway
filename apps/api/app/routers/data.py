@@ -27,6 +27,10 @@ from app.schemas import StreamEvent, UnifiedChatRequest, UnifiedChatResponse
 router = APIRouter()
 log = logging.getLogger("gateway.data")
 FLAG_CODES = {"provider_auth_failed", "provider_credentials_unreadable"}  # errors that mean a saved key no longer works
+# Every call has an end-to-end deadline, and both are well under retention.STALE_PENDING_MINUTES (15 min). A call still running is
+# therefore never mistaken for an abandoned one when stale reservations are settled.
+MAX_CALL_SECONDS = 300      # a non-streaming call, or the first chunk of a stream
+MAX_STREAM_SECONDS = 540    # a whole stream
 
 ADAPTERS = {"anthropic": AnthropicAdapter(), "openai": OpenAIAdapter(), "mock": MockAdapter()}
 DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": "gpt-4o", "mock": "mock-1"}
@@ -50,6 +54,10 @@ def pick_provider(req: UnifiedChatRequest) -> str:
 @router.get("/v1/health")
 async def health():
     return {"status": "operational"}
+
+
+def _upstream_timeout() -> GatewayError:
+    return GatewayError(504, "upstream_timeout", "The provider took too long to answer. The call was not counted.")
 
 
 def _invalid_upstream() -> GatewayError:
@@ -143,13 +151,16 @@ async def _chat(request: Request, body: UnifiedChatRequest, key: ApiKey, session
     prep = await _preflight(request, body, key, session, track_key)
     entry, started = prep.entry, time.monotonic()
     try:
-        result = await ADAPTERS[entry.provider].execute_chat(body, prep.credential)
+        result = await asyncio.wait_for(ADAPTERS[entry.provider].execute_chat(body, prep.credential), MAX_CALL_SECONDS)
         entry.tokens_in, entry.tokens_out, entry.decision = result.usage.prompt_tokens, result.usage.completion_tokens, prep.final_decision
         return result
     except GatewayError as e:
         entry.status_code, entry.decision = e.status, "error"
         await _flag_connection(prep.conn_id, e.code)
         raise
+    except TimeoutError:
+        entry.status_code, entry.decision = 504, "error"
+        raise _upstream_timeout() from None
     except Exception as e:  # a malformed upstream response must not be logged, or billed, as a success
         log.exception("could not process the %s response", entry.provider)
         entry.status_code, entry.decision = 502, "error"
@@ -205,7 +216,8 @@ async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, entry: 
         yield _chunk(rid, entry.model, {"role": "assistant"})
         pending = [first] if first is not None else []
         while True:
-            ev = pending.pop() if pending else await gen.__anext__()
+            left = MAX_STREAM_SECONDS - (time.monotonic() - started)
+            ev = pending.pop() if pending else await asyncio.wait_for(gen.__anext__(), max(left, 0.001))
             if ev.type == "delta":
                 emitted += len(ev.text)
                 yield _chunk(rid, entry.model, {"content": ev.text})
@@ -217,8 +229,8 @@ async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, entry: 
     except StopAsyncIteration:
         pass
     except Exception as e:  # upstream failed after the stream began: say so in-band, then close
-        err = e if isinstance(e, GatewayError) else _invalid_upstream()
-        if err is not e:
+        err = e if isinstance(e, GatewayError) else GatewayError(504, "stream_timeout", "The response took too long and was stopped.") if isinstance(e, TimeoutError) else _invalid_upstream()
+        if err is not e and not isinstance(e, TimeoutError):
             log.exception("could not process the %s stream", entry.provider)
         entry.status_code, entry.decision = err.status, "error"
         yield _error_event(rid, err)
@@ -244,18 +256,19 @@ async def _chat_stream(request: Request, body: UnifiedChatRequest, key: ApiKey, 
     gen = ADAPTERS[entry.provider].stream_chat(body, prep.credential)
     key_id = key.id if track_key else None
     try:
-        first = await gen.__anext__()  # surfaces upstream refusals as a normal HTTP error before any byte is sent
+        first = await asyncio.wait_for(gen.__anext__(), MAX_CALL_SECONDS)  # surfaces upstream refusals as a normal HTTP error before any byte is sent
     except StopAsyncIteration:
         first = None
     except Exception as e:
-        err = e if isinstance(e, GatewayError) else _invalid_upstream()
+        err = e if isinstance(e, GatewayError) else _upstream_timeout() if isinstance(e, TimeoutError) else _invalid_upstream()
         entry.status_code, entry.decision = err.status, "error"
         entry.latency_ms = int((time.monotonic() - started) * 1000)
         await _flag_connection(conn_id, err.code)
         await _write_log(entry, key_id)
         if err is e:
             raise
-        log.exception("could not process the %s stream", entry.provider)
+        if not isinstance(e, TimeoutError):
+            log.exception("could not process the %s stream", entry.provider)
         raise err from e
     return StreamingResponse(_sse(first, gen, body, entry, key_id, started, prep.final_decision), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

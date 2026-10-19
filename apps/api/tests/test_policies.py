@@ -110,9 +110,9 @@ async def test_enforce_blocks_unlisted_models_before_anything_is_sent_upstream(c
 async def test_matching_rules(client):
     await put(client, "enforce", ["claude-*", "gpt-4o"])
     t = lambda m: client.post(URL + "/test", json={"model": m}, headers=OWNER)
-    assert (await t("Claude-Sonnet-5-5")).json() == {"allowed": True, "matched": "claude-*", "mode": "enforce"}
+    assert (await t("Claude-Sonnet-5-5")).json() == {"allowed": True, "matched": "claude-*", "mode": "enforce", "flagged": False}
     assert (await t("gpt-4o")).json()["allowed"] is True
-    assert (await t("gpt-4o-mini")).json() == {"allowed": False, "matched": None, "mode": "enforce"}   # exact entries are exact
+    assert (await t("gpt-4o-mini")).json() == {"allowed": False, "matched": None, "mode": "enforce", "flagged": False}   # exact entries are exact
     assert (await t("x" * 500)).status_code == 422
 
 

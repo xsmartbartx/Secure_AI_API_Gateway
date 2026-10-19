@@ -8,7 +8,7 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import Member, get_session
+from app.db import Member, Organization, get_session
 from app.deps import Principal, require
 from app.errors import GatewayError
 
@@ -37,9 +37,22 @@ async def list_members(p: Principal = Depends(require("viewer")), s: AsyncSessio
     return {"items": [_out(m, p.member.id) for m in rows]}
 
 
+def _lock_org_stmt(org_id: str):
+    """Owner changes are serialised per organization: take a row lock on the org before reading or changing any member."""
+    return select(Organization.id).where(Organization.id == org_id).with_for_update()
+
+
+async def _ensure_active_owner(s: AsyncSession, org_id: str) -> None:
+    owners = (await s.execute(select(func.count()).select_from(Member).where(
+        Member.org_id == org_id, Member.role == "owner", Member.status == "active"))).scalar_one()
+    if owners == 0:
+        raise GatewayError(409, "last_owner", "The organization needs at least one active owner.")
+
+
 @router.patch("/{member_id}")
 async def update_member(member_id: str, body: MemberPatch, p: Principal = Depends(require("admin")), s: AsyncSession = Depends(get_session)):
-    target = await s.get(Member, member_id)
+    await s.execute(_lock_org_stmt(p.org.id))  # two owners demoting each other at once now run one after the other
+    target = await s.get(Member, member_id, populate_existing=True)
     if target is None or target.org_id != p.org.id:
         raise GatewayError(404, "not_found", "Member not found.")
     if target.id == p.member.id:  # nobody locks themselves out or promotes themselves
@@ -55,11 +68,11 @@ async def update_member(member_id: str, body: MemberPatch, p: Principal = Depend
         target.role = body.role
     if body.status:
         target.status = body.status
-    owners = (await s.execute(select(func.count()).select_from(Member).where(
-        Member.org_id == p.org.id, Member.role == "owner", Member.status == "active"))).scalar_one()
-    if owners == 0:  # cannot happen while the actor is an active owner; kept as a hard stop for future rule changes
+    try:
+        await _ensure_active_owner(s, p.org.id)  # counts after the change, inside the lock, so it sees every committed owner change
+    except GatewayError:
         await s.rollback()
-        raise GatewayError(409, "last_owner", "The organization needs at least one active owner.")
+        raise
     await s.commit()
     log.info("member changed org=%s actor=%s target=%s %s->%s", p.org.id, p.member.id, target.id, before, (target.role, target.status))
     return _out(target, p.member.id)

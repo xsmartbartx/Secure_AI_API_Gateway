@@ -40,8 +40,10 @@ export default function Policies() {
   async function check(e: React.FormEvent) {
     e.preventDefault(); setProbeResult(null)
     try {
-      const r = await api<{ allowed: boolean; matched: string | null; mode: Mode }>('/api/policies/model_allow/test', { method: 'POST', body: JSON.stringify({ model: probe }) })
-      setProbeResult(r.mode === 'off' ? 'Allowed: the policy is off.' : r.allowed ? `Allowed: matches “${r.matched}”.` : r.mode === 'enforce' ? 'Blocked: not on the list.' : 'Would be flagged: not on the list (monitor mode lets it through).')
+      const r = await api<{ allowed: boolean; matched: string | null; mode: Mode; flagged: boolean }>('/api/policies/model_allow/test', { method: 'POST', body: JSON.stringify({ model: probe }) })
+      if (r.mode === 'off') setProbeResult('Allowed: the policy is off.')
+      else if (r.matched) setProbeResult(`Allowed: matches “${r.matched}”.`)
+      else setProbeResult(r.flagged ? 'Would be flagged: not on the list (monitor mode lets it through).' : 'Blocked: not on the list.')
     } catch (err: any) { setProbeResult(err.message) }
   }
 

@@ -51,15 +51,9 @@ async def list_policies(p: Principal = Depends(require("viewer")), s: AsyncSessi
 
 @router.put("/model_allow")
 async def set_model_policy(body: ModelPolicyIn, p: Principal = Depends(require("admin")), s: AsyncSession = Depends(get_session)):
-    row = await policy.load_model_policy(s, p.org.id)
-    if row is None:
-        row = Policy(org_id=p.org.id, type=policy.MODEL_ALLOW, mode=body.mode, config={"models": body.models}, version=1)
-        s.add(row)
-    else:
-        row.mode, row.config, row.version = body.mode, {"models": body.models}, row.version + 1
-    await s.commit()
-    log.info("model policy changed org=%s actor=%s mode=%s patterns=%d version=%d", p.org.id, p.member.id, row.mode, len(body.models), row.version)
-    return _out(row)
+    version = await policy.save_policy(s, p.org.id, policy.MODEL_ALLOW, body.mode, {"models": body.models})
+    log.info("model policy changed org=%s actor=%s mode=%s patterns=%d version=%d", p.org.id, p.member.id, body.mode, len(body.models), version)
+    return {"mode": body.mode, "models": body.models, "version": version}
 
 
 @router.post("/model_allow/test")
@@ -68,4 +62,5 @@ async def test_model(body: ModelTest, p: Principal = Depends(require("admin")), 
     row = await policy.load_model_policy(s, p.org.id)
     matched = policy.match(row.config.get("models", []), body.model) if row else None
     mode = row.mode if row else "off"
-    return {"allowed": mode == "off" or matched is not None, "matched": matched, "mode": mode}
+    # "allowed" means the call would go ahead: only enforce mode stops an unlisted model. Monitor lets it through but flags it.
+    return {"allowed": mode != "enforce" or matched is not None, "matched": matched, "mode": mode, "flagged": mode == "monitor" and matched is None}

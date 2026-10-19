@@ -11,10 +11,11 @@ replica/   product planning: recon, architecture, schema, design tokens, test pl
 
 ## Run locally
 ```bash
-cd apps/api && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.lock
-.venv/bin/uvicorn app.main:app --port 8000          # dev auth + mock upstream, SQLite
+# terminal 1: the API (from the repository root)
+(cd apps/api && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.lock && .venv/bin/uvicorn app.main:app --port 8000)   # dev auth + mock upstream, SQLite
 
-cd apps/web && npm install && npm run dev            # http://localhost:3000 (uses .env.local, see .env.example)
+# terminal 2: the web app (also from the repository root)
+(cd apps/web && npm install && npm run dev)           # http://localhost:3000 (uses .env.local, see .env.example)
 ```
 Tests: `cd apps/api && .venv/bin/python -m pytest -q` (129 tests).
 Browser tests (Playwright, real Chrome) and accessibility scans (axe): `cd apps/web && npm run e2e` (starts its own API and web server on ports 8411/3411).

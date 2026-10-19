@@ -3,7 +3,8 @@ import fnmatch
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import Policy
@@ -43,6 +44,28 @@ def match(patterns: list[str], model: str) -> str | None:
 class Verdict:
     action: str  # allow | flag | block
     rule: str | None = None
+
+
+async def save_policy(s: AsyncSession, org_id: str, ptype: str, mode: str, config: dict) -> int:
+    """Create or update a policy and return the version this save produced.
+
+    Two admins can save at once, and two first saves can race on the unique (org, type) constraint. The version is therefore
+    incremented in SQL (`version = version + 1 ... RETURNING`) so every save gets its own number, and a first save that loses
+    the race to create the row simply falls through to an update."""
+    def bump():
+        return (update(Policy).where(Policy.org_id == org_id, Policy.type == ptype)
+                .values(mode=mode, config=config, version=Policy.version + 1).returning(Policy.version))
+    version = (await s.execute(bump())).scalar_one_or_none()
+    if version is None:
+        try:
+            async with s.begin_nested():
+                s.add(Policy(org_id=org_id, type=ptype, mode=mode, config=config, version=1))
+                await s.flush()
+            version = 1
+        except IntegrityError:  # a concurrent first save created the row between our UPDATE and INSERT
+            version = (await s.execute(bump())).scalar_one()
+    await s.commit()
+    return version
 
 
 async def load_model_policy(s: AsyncSession, org_id: str) -> Policy | None:
