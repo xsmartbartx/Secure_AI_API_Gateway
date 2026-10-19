@@ -137,3 +137,26 @@ async def test_the_last_active_owner_guard_refuses_a_state_with_no_owner(client)
         with pytest.raises(Exception) as e:
             await team._ensure_active_owner(s, org_id)
         assert getattr(e.value, "code", "") == "last_owner"
+
+
+# --- log hygiene (SonarCloud pythonsecurity:S5145, log injection) ---
+def test_log_values_cannot_forge_lines():
+    from app.logsafe import clean
+    assert clean("org\nINFO fake line\r\tend") == "org?INFO fake line??end"
+    assert clean("x" * 500) == "x" * 80
+    assert clean(("a", "b")) == "('a', 'b')"
+
+
+def test_logged_modes_come_from_the_closed_set():
+    from app.logsafe import one_of
+    assert one_of("enforce", ("off", "monitor", "enforce")) == "enforce"
+    assert one_of("enforce\nINFO forged", ("off", "monitor", "enforce")) == "?"
+
+
+async def test_a_policy_save_logs_only_known_values(client, caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="gateway.policies")
+    await put(client, ["gpt-4o"])
+    line = next(r.getMessage() for r in caplog.records if r.name == "gateway.policies")
+    assert "mode=monitor" in line
+    assert "gpt-4o" not in line          # the patterns themselves are never logged, only how many

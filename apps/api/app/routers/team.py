@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import Member, Organization, get_session
 from app.deps import Principal, require
 from app.errors import GatewayError
+from app.logsafe import clean
 
 router = APIRouter(prefix="/api/members")
 log = logging.getLogger("gateway.team")
@@ -74,5 +75,5 @@ async def update_member(member_id: str, body: MemberPatch, p: Principal = Depend
         await s.rollback()
         raise
     await s.commit()
-    log.info("member changed org=%s actor=%s target=%s %s->%s", p.org.id, p.member.id, target.id, before, (target.role, target.status))
+    log.info("member changed org=%s actor=%s target=%s %s->%s", clean(p.org.id), clean(p.member.id), clean(target.id), clean(before), clean((target.role, target.status)))
     return _out(target, p.member.id)

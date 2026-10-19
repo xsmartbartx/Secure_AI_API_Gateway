@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import policy
 from app.db import Policy, get_session
 from app.deps import Principal, require
+from app.logsafe import clean, one_of
 
 router = APIRouter(prefix="/api/policies")
 log = logging.getLogger("gateway.policies")
@@ -52,7 +53,7 @@ async def list_policies(p: Principal = Depends(require("viewer")), s: AsyncSessi
 @router.put("/model_allow")
 async def set_model_policy(body: ModelPolicyIn, p: Principal = Depends(require("admin")), s: AsyncSession = Depends(get_session)):
     version = await policy.save_policy(s, p.org.id, policy.MODEL_ALLOW, body.mode, {"models": body.models})
-    log.info("model policy changed org=%s actor=%s mode=%s patterns=%d version=%d", p.org.id, p.member.id, body.mode, len(body.models), version)
+    log.info("model policy changed org=%s actor=%s mode=%s patterns=%d version=%d", clean(p.org.id), clean(p.member.id), one_of(body.mode, policy.MODES), len(body.models), version)
     return {"mode": body.mode, "models": body.models, "version": version}
 
 

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.db import (ApiKey, Member, Organization, Policy, ProviderConnection, RequestLog, SecurityEvent, SessionLocal, Subscription, UsageDaily)
 from app.deps import Principal, require
 from app.errors import GatewayError
+from app.logsafe import clean
 from app.ratelimit import limiter
 
 router = APIRouter(prefix="/api")
@@ -69,7 +70,7 @@ async def export_org(p: Principal = Depends(require("admin"))):
     ok, retry = await limiter.allow(f"export:{p.org.id}", 3)  # a full export reads every table: keep it from being a load tool
     if not ok:
         raise GatewayError(429, "rate_limited", "Too many exports. Try again in a minute.", {"Retry-After": str(retry)})
-    log.info("org export requested org=%s member=%s", p.org.id, p.member.id)  # an audit trail without personal data
+    log.info("org export requested org=%s member=%s", clean(p.org.id), clean(p.member.id))  # an audit trail without personal data
     name = f"nexora-gateway-export-{p.org.id}-{dt.datetime.now(dt.timezone.utc).date()}.json"
     return StreamingResponse(_export(p.org.id), media_type="application/json",
                              headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})

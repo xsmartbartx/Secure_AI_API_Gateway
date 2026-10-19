@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import (ApiKey, Member, Organization, Policy, ProviderConnection, RequestLog, SecurityEvent, Subscription, UsageDaily)
 from app.errors import GatewayError
+from app.logsafe import clean
 from app.routers import billing
 
 log = logging.getLogger("gateway.accounts")
@@ -20,7 +21,7 @@ async def cancel_billing(s: AsyncSession, org_id: str, strict: bool) -> None:
     try:
         billing.cancel_subscription_now(sub.stripe_subscription_id)
     except Exception:
-        log.exception("could not cancel Stripe subscription for org %s", org_id)
+        log.exception("could not cancel Stripe subscription for org %s", clean(org_id))
         if strict:
             raise GatewayError(502, "billing_cancel_failed", "We could not cancel your subscription, so nothing was deleted. Try again, or contact support.")
 
@@ -37,7 +38,7 @@ async def delete_org_data(s: AsyncSession, org_id: str) -> None:
     await s.execute(delete(Subscription).where(Subscription.org_id == org_id))
     await s.execute(delete(Member).where(Member.org_id == org_id))
     await s.execute(delete(Organization).where(Organization.id == org_id))
-    log.info("deleted organization %s", org_id)
+    log.info("deleted organization %s", clean(org_id))
 
 
 async def remove_user_everywhere(s: AsyncSession, external_user_id: str) -> int:
