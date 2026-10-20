@@ -20,3 +20,18 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+# Gateway app
+apps/api/.venv/
+apps/api/*.db
+apps/api/.pytest_cache/
+__pycache__/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/.env.local
+.env
+.claude/
+*.tsbuildinfo
+apps/web/.next-e2e/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/api/e2e.db*

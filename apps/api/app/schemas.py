@@ -1,0 +1,46 @@
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str = Field(..., max_length=200_000)
+
+
+class UnifiedChatRequest(BaseModel):
+    model: str | None = Field(None, max_length=200)
+    provider: str | None = None
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=200)
+    temperature: float | None = Field(0.7, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(None, gt=0, le=64_000)
+    stream: bool = False
+
+
+class ChatChoice(BaseModel):
+    index: int
+    message: ChatMessage
+    finish_reason: str | None = None
+
+
+class UsageInfo(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+class UnifiedChatResponse(BaseModel):
+    id: str
+    provider: str
+    model: str
+    choices: list[ChatChoice]
+    usage: UsageInfo
+
+
+class StreamEvent(BaseModel):
+    """Provider-neutral streaming event. type: delta (text), usage (token counts), finish (stop reason)."""
+    type: Literal["delta", "usage", "finish"]
+    text: str = ""
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    finish_reason: str | None = None
