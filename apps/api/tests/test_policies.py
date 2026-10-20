@@ -26,7 +26,6 @@ async def fresh():
     async with engine.begin() as c:
         await c.run_sync(Base.metadata.drop_all)
         await c.run_sync(Base.metadata.create_all)
-    yield
 
 
 @pytest.fixture
@@ -80,7 +79,8 @@ async def test_validation(client):
 
 async def test_patterns_are_normalised_and_versioned(client):
     r = (await put(client, "enforce", ["  Claude-*  ", "GPT-4o", "gpt-4o", "claude-*"])).json()
-    assert r["models"] == ["claude-*", "gpt-4o"] and r["version"] == 1
+    assert r["models"] == ["claude-*", "gpt-4o"]
+    assert r["version"] == 1
     assert (await put(client, "monitor", ["gpt-4o"])).json()["version"] == 2
 
 
@@ -99,12 +99,18 @@ async def test_enforce_blocks_unlisted_models_before_anything_is_sent_upstream(c
     blocked = await call(client, k, "claude-opus-9")
     assert blocked.status_code == 403
     err = blocked.json()["error"]
-    assert err["code"] == "model_not_allowed" and "claude-opus-9" in err["message"] and err["request_id"].startswith("req_")
+    assert err["code"] == "model_not_allowed"
+    assert "claude-opus-9" in err["message"]
+    assert err["request_id"].startswith("req_")
     rs = await rows()
     assert [(r.model, r.decision, r.status_code) for r in rs] == [("mock-1", "allow", 200), ("claude-opus-9", "block", 403)]
-    assert rs[1].tokens_in == 0 and rs[1].tokens_out == 0
+    assert rs[1].tokens_in == 0
+    assert rs[1].tokens_out == 0
     ev = await events()
-    assert len(ev) == 1 and ev[0].type == "policy_denied" and ev[0].rule_id == "model_allow" and ev[0].log_id == rs[1].id
+    assert len(ev) == 1
+    assert ev[0].type == "policy_denied"
+    assert ev[0].rule_id == "model_allow"
+    assert ev[0].log_id == rs[1].id
 
 
 async def test_matching_rules(client):
@@ -119,7 +125,8 @@ async def test_matching_rules(client):
 async def test_the_default_model_is_checked_too(client):
     await put(client, "enforce", ["claude-*"])
     r = await call(client, await gw_key(client))               # no model sent: the mock default "mock-1" applies
-    assert r.status_code == 403 and "mock-1" in r.json()["error"]["message"]
+    assert r.status_code == 403
+    assert "mock-1" in r.json()["error"]["message"]
 
 
 async def test_monitor_lets_calls_through_but_flags_them(client):
@@ -130,7 +137,9 @@ async def test_monitor_lets_calls_through_but_flags_them(client):
     rs = await rows()
     assert [(r.model, r.decision) for r in rs] == [("mock-1", "flag"), ("gpt-4o", "allow")]
     ev = await events()
-    assert len(ev) == 1 and ev[0].type == "policy_would_deny" and ev[0].log_id == rs[0].id
+    assert len(ev) == 1
+    assert ev[0].type == "policy_would_deny"
+    assert ev[0].log_id == rs[0].id
 
 
 async def test_off_allows_everything_and_records_nothing(client):
@@ -144,10 +153,12 @@ async def test_streaming_is_checked_before_the_first_byte(client):
     await put(client, "enforce", ["gpt-4o"])
     k = await gw_key(client)
     r = await call(client, k, "mock-1", stream=True)
-    assert r.status_code == 403 and r.headers["content-type"].startswith("application/json")
+    assert r.status_code == 403
+    assert r.headers["content-type"].startswith("application/json")
     await put(client, "monitor", ["gpt-4o"])
     r = await call(client, k, "mock-1", stream=True)
-    assert r.status_code == 200 and "[DONE]" in r.text
+    assert r.status_code == 200
+    assert "[DONE]" in r.text
     assert [x.decision for x in await rows()] == ["block", "flag"]
 
 
@@ -190,13 +201,15 @@ async def test_policies_are_per_org(client):
 async def test_playground_obeys_the_policy(client):
     await put(client, "enforce", ["gpt-4o"])
     r = await client.post("/api/playground", json={"prompt": "hi"}, headers=OWNER)
-    assert r.status_code == 403 and r.json()["error"]["code"] == "model_not_allowed"
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "model_not_allowed"
 
 
 async def test_deleted_with_the_org_and_included_in_the_export(client):
     await put(client, "enforce", ["gpt-4o"])
     d = json.loads((await client.get("/api/org/export", headers=OWNER)).text)
-    assert d["policies"][0]["type"] == "model_allow" and d["policies"][0]["config"]["models"] == ["gpt-4o"]
+    assert d["policies"][0]["type"] == "model_allow"
+    assert d["policies"][0]["config"]["models"] == ["gpt-4o"]
     await client.post("/api/org/delete", json={"confirm": "org_pol"}, headers=OWNER)
     async with SessionLocal() as s:
         assert (await s.execute(select(func.count()).select_from(Policy))).scalar_one() == 0

@@ -21,7 +21,6 @@ async def fresh():
     async with engine.begin() as c:
         await c.run_sync(Base.metadata.drop_all)
         await c.run_sync(Base.metadata.create_all)
-    yield
 
 
 @pytest.fixture
@@ -56,11 +55,14 @@ async def test_group_by_key(client):
     org, k1, k2 = await seed(client)
     d = (await client.get("/api/usage?group=key", headers=A)).json()
     rows = {r["label"]: r for r in d["rows"]}
-    assert rows["backend"]["calls"] == 4 and rows["backend"]["errors"] == 1 and rows["backend"]["tokens_in"] == 30
+    assert rows["backend"]["calls"] == 4
+    assert rows["backend"]["errors"] == 1
+    assert rows["backend"]["tokens_in"] == 30
     assert rows["=cmd|evil"]["blocked"] == 1
     assert rows["Playground"]["calls"] == 1
     assert d["totals"]["calls"] == 6  # the 40-day-old row is outside the window
-    assert rows["backend"]["id"] == k1["id"] and rows["backend"]["prefix"].startswith("nx_live_")
+    assert rows["backend"]["id"] == k1["id"]
+    assert rows["backend"]["prefix"].startswith("nx_live_")
 
 
 async def test_group_by_model_and_day(client):
@@ -76,10 +78,12 @@ async def test_date_range_inclusive(client):
     org, k1, _ = await seed(client)
     day40 = (NOW - dt.timedelta(days=40)).date().isoformat()
     r = (await client.get(f"/api/usage?group=key&from={day40}&to={day40}", headers=A)).json()
-    assert r["totals"]["calls"] == 1 and r["rows"][0]["label"] == "backend"
+    assert r["totals"]["calls"] == 1
+    assert r["rows"][0]["label"] == "backend"
     today = NOW.date().isoformat()
     r = (await client.get(f"/api/usage?group=day&from={today}&to={today}", headers=A)).json()
-    assert r["totals"]["calls"] == 0 and r["rows"] == []
+    assert r["totals"]["calls"] == 0
+    assert r["rows"] == []
 
 
 async def test_validation(client):
@@ -92,7 +96,8 @@ async def test_validation(client):
 async def test_isolated_per_org(client):
     await seed(client)
     r = (await client.get("/api/usage?group=key", headers=B)).json()
-    assert r["rows"] == [] and r["totals"]["calls"] == 0
+    assert r["rows"] == []
+    assert r["totals"]["calls"] == 0
 
 
 async def test_deleted_key_labelled(client):
@@ -110,5 +115,6 @@ async def test_csv_export_neutralises_formulas(client):
     r = await client.get("/api/usage?group=key&format=csv", headers=A)
     assert r.headers["content-type"].startswith("text/csv")
     lines = r.text.strip().splitlines()
-    assert lines[0].startswith("label,") and any(l.startswith("'=cmd|evil,") for l in lines)
+    assert lines[0].startswith("label,")
+    assert any(l.startswith("'=cmd|evil,") for l in lines)
     assert "attachment" in r.headers["content-disposition"]

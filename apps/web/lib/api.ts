@@ -34,8 +34,26 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export type Overview = { calls: number; blocked: number; errors: number; tokens: number; p50_latency_ms: number | null; quota: { used: number; limit: number }; series: { day: string; calls: number; blocked: number; errors: number }[] }
-export type Key = { id: string; name: string; prefix: string; last4: string; rpm_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }
+export type Key = { id: string; name: string; prefix: string; last4: string; rpm_limit: number; monthly_call_limit: number | null; monthly_token_limit: number | null; month_calls: number; month_tokens: number; created_at: string; last_used_at: string | null; revoked_at: string | null }
 export type Log = { id: string; request_id: string; ts: string; key_id: string | null; provider: string | null; model: string | null; status_code: number; decision: 'allow' | 'flag' | 'block' | 'error' | 'pending'; risk_score: number | null; tokens_in: number; tokens_out: number; latency_ms: number | null }
+
+/** The `data:` payload of every server-sent event in a response body, as it arrives. */
+async function* sseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) return
+    buf += decoder.decode(value, { stream: true })
+    let end: number
+    while ((end = buf.indexOf('\n\n')) >= 0) {
+      const event = buf.slice(0, end).trim()
+      buf = buf.slice(end + 2)
+      if (event.startsWith('data:')) yield event.slice(5).trim()
+    }
+  }
+}
 
 /** POST that answers with an SSE stream of chat chunks. Calls onDelta for each text piece; resolves with the final usage. */
 export async function apiStream(path: string, body: unknown, onDelta: (t: string) => void, signal?: AbortSignal) {
@@ -47,29 +65,18 @@ export async function apiStream(path: string, body: unknown, onDelta: (t: string
     const b = await res.json().catch(() => ({}))
     throw new ApiError(res.status, b?.error?.code ?? 'error', b?.error?.message ?? res.statusText)
   }
-  const reader = res.body.getReader()
-  const dec = new TextDecoder()
-  let buf = '', usage: { total_tokens: number } | null = null, model = '', completed = false
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buf += dec.decode(value, { stream: true })
-    let i: number
-    while ((i = buf.indexOf('\n\n')) >= 0) {
-      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2)
-      if (!line.startsWith('data:')) continue
-      const data = line.slice(5).trim()
-      if (data === '[DONE]') { completed = true; return { usage, model } }
-      const obj = JSON.parse(data)
-      if (obj.error) throw new ApiError(502, obj.error.code, obj.error.message)
-      model = obj.model ?? model
-      const t = obj.choices?.[0]?.delta?.content
-      if (t) onDelta(t)
-      if (obj.usage) usage = obj.usage
-    }
+  let usage: { total_tokens: number } | null = null
+  let model = ''
+  for await (const data of sseData(res.body)) {
+    if (data === '[DONE]') return { usage, model }
+    const chunk = JSON.parse(data)
+    if (chunk.error) throw new ApiError(502, chunk.error.code, chunk.error.message)
+    model = chunk.model ?? model
+    const text = chunk.choices?.[0]?.delta?.content
+    if (text) onDelta(text)
+    usage = chunk.usage ?? usage
   }
-  if (!completed) throw new ApiError(502, 'stream_interrupted', 'The response was cut off before it finished. Try again.')
-  return { usage, model }
+  throw new ApiError(502, 'stream_interrupted', 'The response was cut off before it finished. Try again.')  // the stream ended without [DONE]
 }
 
 /** Download an authenticated endpoint (e.g. CSV) through a temporary link. */

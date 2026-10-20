@@ -83,6 +83,22 @@ async def _org_for_customer(s: AsyncSession, customer_id: str) -> str | None:
     return (await s.execute(select(Subscription.org_id).where(Subscription.stripe_customer_id == customer_id))).scalar_one_or_none()
 
 
+async def _handle_event(s: AsyncSession, typ: str, obj: dict) -> None:
+    """Apply one Stripe event to our own records. Unknown event types are ignored."""
+    if typ == "checkout.session.completed" and obj.get("mode") == "subscription":
+        if org_id := obj.get("client_reference_id"):
+            await _apply(s, org_id, "starter", "active", obj.get("subscription"), None)
+    elif typ in ("customer.subscription.updated", "customer.subscription.deleted"):
+        org_id = (obj.get("metadata") or {}).get("org_id") or await _org_for_customer(s, obj["customer"])
+        if org_id:
+            status = "canceled" if typ.endswith("deleted") else obj["status"]
+            await _apply(s, org_id, "starter", status, obj["id"], obj.get("current_period_end"))
+    elif typ == "invoice.payment_failed":
+        org_id = await _org_for_customer(s, obj["customer"])
+        if org_id and (sub := await s.get(Subscription, org_id)):
+            sub.status = "past_due"
+
+
 @router.post("/webhooks/stripe")
 async def stripe_webhook(request: Request, s: AsyncSession = Depends(get_session)):
     if not settings.STRIPE_WEBHOOK_SECRET:  # an empty secret would make a forged signature trivially computable
@@ -98,20 +114,7 @@ async def stripe_webhook(request: Request, s: AsyncSession = Depends(get_session
         return {"received": True, "duplicate": True}
     s.add(StripeEvent(id=event["id"]))
 
-    obj, typ = event["data"]["object"], event["type"]
-    if typ == "checkout.session.completed" and obj.get("mode") == "subscription":
-        org_id = obj.get("client_reference_id")
-        if org_id:
-            await _apply(s, org_id, "starter", "active", obj.get("subscription"), None)
-    elif typ in ("customer.subscription.updated", "customer.subscription.deleted"):
-        org_id = (obj.get("metadata") or {}).get("org_id") or await _org_for_customer(s, obj["customer"])
-        if org_id:
-            status = "canceled" if typ.endswith("deleted") else obj["status"]
-            await _apply(s, org_id, "starter", status, obj["id"], obj.get("current_period_end"))
-    elif typ == "invoice.payment_failed":
-        org_id = await _org_for_customer(s, obj["customer"])
-        if org_id and (sub := await s.get(Subscription, org_id)):
-            sub.status = "past_due"
+    await _handle_event(s, event["type"], event["data"]["object"])
     await s.commit()
     return {"received": True}
 

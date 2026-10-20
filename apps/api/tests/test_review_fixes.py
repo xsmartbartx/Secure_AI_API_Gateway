@@ -30,7 +30,6 @@ async def fresh(monkeypatch):
         await c.run_sync(Base.metadata.drop_all)
         await c.run_sync(Base.metadata.create_all)
     monkeypatch.setattr(settings, "MOCK_PROVIDER_CHECK", True)
-    yield
 
 
 @pytest.fixture
@@ -47,7 +46,8 @@ async def gw_key(client):
 async def test_stripe_webhook_refuses_everything_without_a_secret(client, monkeypatch):
     monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "")
     r = await client.post("/webhooks/stripe", content=b"{}", headers={"stripe-signature": "t=1,v1=anything"})
-    assert r.status_code == 503 and r.json()["error"]["code"] == "webhook_not_configured"
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "webhook_not_configured"
 
 
 def test_prod_with_billing_requires_the_webhook_secret(monkeypatch):
@@ -123,10 +123,12 @@ async def test_unexpected_adapter_failure_is_an_error_not_a_billed_success(clien
     monkeypatch.setattr(type(data.ADAPTERS["mock"]), "execute_chat", broken)
     h = await gw_key(client)
     r = await client.post("/v1/chat", json=BODY, headers=h)
-    assert r.status_code == 502 and r.json()["error"]["code"] == "upstream_invalid_response"
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "upstream_invalid_response"
     async with SessionLocal() as s:
         row = (await s.execute(select(RequestLog))).scalar_one()
-    assert row.decision == "error" and row.status_code == 502
+    assert row.decision == "error"
+    assert row.status_code == 502
 
 
 async def test_unexpected_failure_mid_stream_is_reported_in_band(client, monkeypatch):
@@ -137,7 +139,9 @@ async def test_unexpected_failure_mid_stream_is_reported_in_band(client, monkeyp
         raise KeyError("surprise")
     monkeypatch.setattr(type(data.ADAPTERS["mock"]), "stream_chat", broken)
     r = await client.post("/v1/chat", json={**BODY, "stream": True}, headers=await gw_key(client))
-    assert r.status_code == 200 and "upstream_invalid_response" in r.text and "[DONE]" not in r.text
+    assert r.status_code == 200
+    assert "upstream_invalid_response" in r.text
+    assert "[DONE]" not in r.text
     async with SessionLocal() as s:
         row = (await s.execute(select(RequestLog))).scalar_one()
     assert row.decision == "error"
@@ -153,7 +157,8 @@ async def test_unreadable_stored_key_gives_a_clear_error_and_flags_the_connectio
         row.credential_enc = row.credential_enc[:-1] + bytes([row.credential_enc[-1] ^ 1])  # corrupted or encrypted under another key
         await s.commit()
     r = await client.post("/v1/chat", json=BODY, headers=await gw_key(client))
-    assert r.status_code == 502 and r.json()["error"]["code"] == "provider_credentials_unreadable"
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "provider_credentials_unreadable"
     assert "Providers" in r.json()["error"]["message"]
     assert (await client.get("/api/providers", headers=OWNER)).json()["items"][0]["status"] == "failing"
 

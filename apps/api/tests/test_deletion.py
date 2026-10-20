@@ -32,7 +32,6 @@ async def fresh(monkeypatch):
         await c.run_sync(Base.metadata.create_all)
     monkeypatch.setattr(settings, "ACCOUNT_WEBHOOK_SECRET", SECRET)
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
-    yield
 
 
 @pytest.fixture
@@ -70,7 +69,8 @@ async def test_delete_org_removes_everything(client):
     before = await rows(org)
     assert all(v >= 1 for v in before.values()), before
     r = await client.post("/api/org/delete", json={"confirm": "org_d"}, headers=OWNER)
-    assert r.status_code == 200 and r.json()["deleted"] is True
+    assert r.status_code == 200
+    assert r.json()["deleted"] is True
     assert all(v == 0 for v in (await rows(org)).values())
     assert all(v >= 1 for v in (await rows(keep)).values())  # other org untouched
     # the deleted org's key no longer works
@@ -89,7 +89,8 @@ async def test_only_owner_can_delete(client):
     org, _ = await populate(client, OWNER)
     admin = {"x-dev-org": "org_d", "x-dev-user": "adm", "x-dev-role": "admin"}
     r = await client.post("/api/org/delete", json={"confirm": "org_d"}, headers=admin)
-    assert r.status_code == 403 and (await rows(org))["org"] == 1
+    assert r.status_code == 403
+    assert (await rows(org))["org"] == 1
 
 
 async def test_stripe_subscription_cancelled_first_and_failure_aborts(client, monkeypatch):
@@ -104,7 +105,8 @@ async def test_stripe_subscription_cancelled_first_and_failure_aborts(client, mo
     def boom(sid, **kw): raise RuntimeError("stripe down")
     monkeypatch.setattr(billing.stripe.Subscription, "cancel", staticmethod(boom))
     r = await client.post("/api/org/delete", json={"confirm": "org_keep"}, headers=OTHER)
-    assert r.status_code == 502 and r.json()["error"]["code"] == "billing_cancel_failed"
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "billing_cancel_failed"
     assert (await rows(org2))["org"] == 1  # nothing deleted while billing may still be running
 
 
@@ -155,7 +157,9 @@ async def test_user_deleted_removes_membership_and_personal_workspace(client):
     assert (await client.post("/webhooks/account", content=body, headers=h)).status_code == 200
     assert all(v == 0 for v in (await rows(porg)).values())
     r = await rows(sorg)
-    assert r["org"] == 1 and r["members"] == 1 and r["api_keys"] == 1
+    assert r["org"] == 1
+    assert r["members"] == 1
+    assert r["api_keys"] == 1
     body, h = signed({"type": "user.deleted", "data": {"id": "user_gone"}}, msg_id="msg_2")
     assert (await client.post("/webhooks/account", content=body, headers=h)).status_code == 200  # idempotent
 

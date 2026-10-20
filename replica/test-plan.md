@@ -53,3 +53,5 @@ Update (export): 71 browser tests, 84 API tests.
 Update (team): 75 browser tests, 93 API tests.
 
 Update (policies): 79 browser tests, 129 API tests.
+
+Update (detection, limits, alerts, cleanup): 90 browser tests, 210 API tests.

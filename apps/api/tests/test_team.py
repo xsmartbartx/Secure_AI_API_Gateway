@@ -23,7 +23,6 @@ async def fresh():
     async with engine.begin() as c:
         await c.run_sync(Base.metadata.drop_all)
         await c.run_sync(Base.metadata.create_all)
-    yield
 
 
 @pytest.fixture
@@ -46,7 +45,9 @@ async def patch(client, headers, member, **body):
 
 async def test_everyone_can_list_members_and_sees_who_they_are(client):
     m = await team(client)
-    assert set(m) == {"owner", "adm", "dev", "vw"} and m["owner"]["role"] == "owner" and m["adm"]["role"] == "admin"
+    assert set(m) == {"owner", "adm", "dev", "vw"}
+    assert m["owner"]["role"] == "owner"
+    assert m["adm"]["role"] == "admin"
     mine = (await client.get("/api/members", headers=VIEWER)).json()["items"]
     assert [i["email"] for i in mine if i["is_me"]] == ["vw@dev.local"]
     assert all(set(i) == {"id", "email", "role", "status", "created_at", "is_me"} for i in mine)  # no internal ids leak
@@ -90,7 +91,8 @@ async def test_suspended_member_is_locked_out_but_keeps_their_own_data_rights(cl
     key = (await client.post("/api/keys", json={"name": "org key"}, headers=OWNER)).json()
     assert (await patch(client, OWNER, m["dev"], status="suspended")).json()["status"] == "suspended"
     r = await client.get("/api/keys", headers=DEV)
-    assert r.status_code == 403 and r.json()["error"]["code"] == "member_suspended"
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "member_suspended"
     assert (await client.post("/api/keys", json={"name": "x"}, headers=DEV)).status_code == 403
     assert (await client.get("/api/members", headers=DEV)).status_code == 403
     me = (await client.get("/api/me", headers=DEV)).json()           # the UI needs this to explain what happened

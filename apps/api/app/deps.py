@@ -110,7 +110,7 @@ async def get_principal(request: Request, session: AsyncSession = Depends(get_se
 
 def require(min_role: str, allow_suspended: bool = False):
     """allow_suspended is for the few endpoints a suspended member still needs: seeing why they are locked out, leaving, and exporting their own data."""
-    async def dep(p: Principal = Depends(get_principal)) -> Principal:
+    async def dep(p: Principal = Depends(get_principal)) -> Principal:  # NOSONAR: kept async so FastAPI does not hop to a worker thread for this check
         if p.member.status == "suspended" and not allow_suspended:
             raise GatewayError(403, "member_suspended", "An owner suspended your access to this organization.")
         if ROLE_RANK[p.role] < ROLE_RANK[min_role]:

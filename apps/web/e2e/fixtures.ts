@@ -1,4 +1,4 @@
-import { APIRequestContext, expect, Page, test as base } from '@playwright/test'
+import { APIRequestContext, expect, test as base } from '@playwright/test'
 
 export const API = 'http://localhost:8411'
 let n = 0
@@ -6,13 +6,13 @@ let n = 0
 type Fixtures = { org: string; dev: Record<string, string>; gateway: Gateway }
 
 export class Gateway {
-  constructor(private request: APIRequestContext, private dev: Record<string, string>) {}
+  constructor(private readonly request: APIRequestContext, private readonly dev: Record<string, string>) {}
   async createKey(name = 'e2e-key') {
     const r = await this.request.post(`${API}/api/keys`, { headers: this.dev, data: { name } })
     expect(r.status()).toBe(201)
     return (await r.json()) as { id: string; secret: string }
   }
-  async call(secret: string, content = 'hello from e2e', extra: object = {}) {
+  call(secret: string, content = 'hello from e2e', extra: object = {}) {
     return this.request.post(`${API}/v1/chat`, { headers: { authorization: `Bearer ${secret}` }, data: { messages: [{ role: 'user', content }], ...extra } })
   }
 }
@@ -34,4 +34,4 @@ export const test = base.extend<Fixtures>({
   },
 })
 export { expect }
-export type { Page }
+export type { Page } from '@playwright/test'

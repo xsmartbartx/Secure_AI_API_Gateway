@@ -17,7 +17,7 @@ replica/   product planning: recon, architecture, schema, design tokens, test pl
 # terminal 2: the web app (also from the repository root)
 (cd apps/web && npm install && npm run dev)           # http://localhost:3000 (uses .env.local, see .env.example)
 ```
-Tests: `cd apps/api && .venv/bin/python -m pytest -q` (129 tests).
+Tests: `cd apps/api && .venv/bin/python -m pytest -q` (210 tests).
 Browser tests (Playwright, real Chrome) and accessibility scans (axe): `cd apps/web && npm run e2e` (starts its own API and web server on ports 8411/3411).
 CI (`.github/workflows/ci.yml`) runs all of this on every pull request and on pushes to `main`: API lint, tests, migrations (up, check, down) and `pip-audit` on Python 3.11 and 3.12; web typecheck, build and `npm audit`; and the browser suite.
 With no upstream key set, dev mode answers from a built-in mock so the full loop works offline. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for a real provider.
@@ -32,7 +32,7 @@ curl http://localhost:8000/v1/chat \
 `POST /v1/chat/completions` accepts the same body and answers in OpenAI shape. Errors: `{"error":{"code","message","request_id"}}`.
 
 ## Status
-Beta. Built: hashed keys, rate limit, quota, logs, playground, billing (Stripe test mode, code only), dashboard. Streaming: add `"stream": true` to get Server-Sent Events of OpenAI-style chunks ending in `data: [DONE]`. Not built: DLP/injection detection and other policy types. SSO (NEXORA account login) is built but not yet verified against the live account. See `replica/backend.md` and `replica/parity.md`.
+Beta. Built: hashed keys, rate limit, quota, logs, playground, billing (Stripe test mode, code only), dashboard. Streaming: add `"stream": true` to get Server-Sent Events of OpenAI-style chunks ending in `data: [DONE]`. Not built: machine-learning detection, custom detection rules, SIEM export and webhooks, routing and fallback across providers. SSO (NEXORA account login) is built but not yet verified against the live account. See `replica/backend.md` and `replica/parity.md`.
 Production needs: Postgres (`alembic upgrade head`), Redis, NEXORA SSO JWKS, Stripe keys. See `.env.example`.
 
 MIT License.

@@ -21,16 +21,16 @@ const NAV = [
   { href: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <AuthGate><AppShell>{children}</AppShell></AuthGate>
 }
 
-function AppShell({ children }: { children: React.ReactNode }) {
+function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const session = useSession()
   const path = usePathname()
   const [open, setOpen] = useState(false)
   const [dark, setDark] = useState(false)
-  const { data: me } = useApi<{ org: { name: string; plan: string }; member: { email: string; role: string; status: string } }>('/api/me')
+  const { data: me } = useApi<{ org: { name: string; plan: string }; member: { email: string; role: string; status: string }; usage?: { used: number; limit: number } }>('/api/me')
   useEffect(() => { try { const t = localStorage.getItem('theme'); if (t) setDark(t === 'dark') } catch {} }, [])
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; try { localStorage.setItem('theme', dark ? 'dark' : 'light') } catch {} }, [dark])
   useEffect(() => setOpen(false), [path])
@@ -49,13 +49,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
         {process.env.NEXT_PUBLIC_DEV_AUTH !== '1' && <button className="rounded px-2 py-1 text-xs hover:bg-surface" onClick={session.signOut}>Sign out</button>}
       </div>
     </header>
-    <nav aria-label="Dashboard" className={`fixed bottom-0 left-0 top-12 z-10 w-60 overflow-y-auto bg-nav-bg p-2 transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+    <nav aria-label="Dashboard" className={`fixed bottom-0 left-0 top-12 z-10 w-60 overflow-y-auto bg-nav-bg p-2 transition-transform motion-reduce:transition-none lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
       <ul className="space-y-0.5">{NAV.map(n => { const active = path === n.href; return <li key={n.href}>
         <Link href={n.href} aria-current={active ? 'page' : undefined} className={`flex h-9 items-center gap-3 rounded-md px-3 text-sm ${active ? 'bg-white/10 font-semibold text-nav-active' : 'text-nav-text hover:bg-white/5 hover:text-nav-active'}`}><n.icon size={16} aria-hidden />{n.label}</Link></li> })}</ul>
       <p className="mt-6 px-3 text-xs text-nav-text">Plan: {me?.org.plan ?? '…'}</p>
     </nav>
     <main id="content" className="px-4 pb-16 pt-[72px] lg:pl-[272px]">
       <div className="mx-auto max-w-content">
+        {me?.usage && <QuotaBanner used={me.usage.used} limit={me.usage.limit} />}
         <p className="mb-4 text-xs text-text-muted">Gateway / {current}</p>
         {me?.member.status === 'suspended' ? <Suspended onSignOut={session.signOut} /> : children}
       </div>
@@ -64,7 +65,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 // A suspended member still gets to see why, take their own data, and leave.
-function Suspended({ onSignOut }: { onSignOut: () => void }) {
+function Suspended({ onSignOut }: Readonly<{ onSignOut: () => void }>) {
   const [err, setErr] = useState<string | null>(null)
   async function leave() {
     if (!confirm('Leave this organization? Your membership record is deleted.')) return
@@ -80,4 +81,14 @@ function Suspended({ onSignOut }: { onSignOut: () => void }) {
     </div>
     {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
   </div>
+}
+
+// Warns before calls start failing, and says so plainly once they do.
+function QuotaBanner({ used, limit }: Readonly<{ used: number; limit: number }>) {
+  if (limit <= 0 || used * 100 < limit * 80) return null
+  const reached = used >= limit
+  return <output className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm ${reached ? 'border-danger bg-danger-subtle text-danger' : 'border-warning bg-warning-subtle text-warning'}`}>
+    <span>{reached ? `You have used all ${limit.toLocaleString()} calls this month. New calls are rejected until the month resets (UTC) or you upgrade.` : `You have used ${used.toLocaleString()} of ${limit.toLocaleString()} calls this month.`}</span>
+    <Link href="/app/billing" className="font-semibold underline">{reached ? 'Upgrade your plan' : 'See your plan'}</Link>
+  </output>
 }

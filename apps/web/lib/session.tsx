@@ -1,6 +1,6 @@
 'use client'
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-react'
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import { setTokenGetter } from './api'
 
 // Shared NEXORA account login (Clerk). gateway.onenexora.com is a subdomain of the account's primary domain,
@@ -13,11 +13,11 @@ type Session = { email: string; signOut: () => void }
 const Ctx = createContext<Session>({ email: '', signOut: () => {} })
 export const useSession = () => useContext(Ctx)
 
-function Waiting({ text }: { text: string }) {
-  return <div className="flex min-h-screen items-center justify-center text-text-muted" role="status">{text}</div>
+function Waiting({ text }: Readonly<{ text: string }>) {
+  return <output className="flex min-h-screen items-center justify-center text-text-muted">{text}</output>
 }
 
-function ClerkInner({ children }: { children: ReactNode }) {
+function ClerkInner({ children }: Readonly<{ children: ReactNode }>) {
   const { isLoaded, isSignedIn, getToken, signOut } = useAuth()
   const { user } = useUser()
   const [ready, setReady] = useState(false)
@@ -32,12 +32,16 @@ function ClerkInner({ children }: { children: ReactNode }) {
     setReady(true)
   }, [isLoaded, isSignedIn, getToken])
 
+  const email = user?.primaryEmailAddress?.emailAddress ?? ''
+  const value = useMemo(() => ({ email, signOut: () => { setTokenGetter(null); signOut({ redirectUrl: '/' }) } }), [email, signOut])
   if (!ready) return <Waiting text={isLoaded && !isSignedIn ? 'Taking you to sign in…' : 'Loading…'} />
-  return <Ctx.Provider value={{ email: user?.primaryEmailAddress?.emailAddress ?? '', signOut: () => { setTokenGetter(null); signOut({ redirectUrl: '/' }) } }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
-export function AuthGate({ children }: { children: ReactNode }) {
-  if (DEV_AUTH) return <Ctx.Provider value={{ email: 'demo@dev.local', signOut: () => {} }}>{children}</Ctx.Provider>
+const DEV_SESSION: Session = { email: 'demo@dev.local', signOut: () => {} }
+
+export function AuthGate({ children }: Readonly<{ children: ReactNode }>) {
+  if (DEV_AUTH) return <Ctx.Provider value={DEV_SESSION}>{children}</Ctx.Provider>
   if (!PUBLISHABLE_KEY) return <Waiting text="Sign-in is not configured for this environment." />
   return <ClerkProvider publishableKey={PUBLISHABLE_KEY} signInUrl={SIGN_IN_URL} afterSignOutUrl="/"><ClerkInner>{children}</ClerkInner></ClerkProvider>
 }

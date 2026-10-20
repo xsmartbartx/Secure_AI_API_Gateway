@@ -8,6 +8,7 @@ import { useApi } from '@/lib/use-fetch'
 const GROUPS = [['key', 'By key'], ['model', 'By model'], ['day', 'By day']] as const
 const utcDay = (offset = 0) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
 const n = (v: number) => v.toLocaleString()
+const GROUP_COLUMN = { key: 'Key', model: 'Model', day: 'Day' } as const
 
 // The API returns only days that had calls; the chart needs every day so gaps look like gaps.
 function fillDays(rows: { label: string; calls: number; blocked: number }[], from: string, to: string) {
@@ -41,10 +42,10 @@ export default function UsagePage() {
     <PageHeader title="Usage" description="Calls and tokens per key, model or day. Days are UTC. Token counts come from the provider's response (estimated for cancelled streams)."
       action={<Button variant="secondary" onClick={csv} disabled={!data || data.rows.length === 0}>Download CSV</Button>} />
     <Card className="mb-6 flex flex-wrap items-end gap-4 p-4">
-      <div role="group" aria-label="Group by" className="flex overflow-hidden rounded-md border border-border-input">
+      <fieldset className="flex overflow-hidden rounded-md border border-border-input"><legend className="sr-only">Group by</legend>
         {GROUPS.map(([g, label]) => <button key={g} aria-pressed={group === g} onClick={() => setGroup(g)}
           className={`h-10 px-4 text-sm font-medium ${group === g ? 'bg-accent text-on-accent' : 'bg-bg hover:bg-surface'}`}>{label}</button>)}
-      </div>
+      </fieldset>
       <div><label htmlFor="from" className="mb-1 block text-xs font-medium text-text-muted">From</label>
         <input id="from" type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} className="h-10 rounded-md border border-border-input bg-bg px-3" /></div>
       <div><label htmlFor="to" className="mb-1 block text-xs font-medium text-text-muted">To</label>
@@ -60,9 +61,9 @@ export default function UsagePage() {
     <Card className="overflow-x-auto">
       {loading && <div className="space-y-3 p-4">{[0, 1, 2].map(i => <Skeleton key={i} className="h-6" />)}</div>}
       {error && <ErrorState message={error.message} onRetry={reload} />}
-      {data && !loading && data.rows.length === 0 && <Empty title="No calls in this range" help="Try a wider range, or make a call from the playground." />}
+      {!loading && data?.rows.length === 0 && <Empty title="No calls in this range" help="Try a wider range, or make a call from the playground." />}
       {data && !loading && data.rows.length > 0 && <table className="w-full text-sm">
-        <thead className="border-b border-border"><tr><Th>{group === 'key' ? 'Key' : group === 'model' ? 'Model' : 'Day'}</Th><Th>Calls</Th><Th>Blocked</Th><Th>Errors</Th><Th>Tokens in</Th><Th>Tokens out</Th></tr></thead>
+        <thead className="border-b border-border"><tr><Th>{GROUP_COLUMN[group]}</Th><Th>Calls</Th><Th>Blocked</Th><Th>Errors</Th><Th>Tokens in</Th><Th>Tokens out</Th></tr></thead>
         <tbody className="divide-y divide-border">{data.rows.map(r => <tr key={r.id ?? r.label}>
           <Td className="max-w-56 truncate font-medium">{r.label}{r.revoked && <span className="ml-2 text-xs font-normal text-text-muted">revoked</span>}
             {r.prefix && <span className="block font-mono text-xs font-normal text-text-muted">{r.prefix}</span>}</Td>

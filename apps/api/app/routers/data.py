@@ -16,13 +16,13 @@ from app.adapters.anthropic_adapter import AnthropicAdapter
 from app.adapters.mock_adapter import MockAdapter
 from app.adapters.openai_adapter import OpenAIAdapter
 from app.config import settings
-from app import policy, providers
+from app import alerts, policy, providers
 from app.db import ApiKey, Organization, ProviderConnection, RequestLog, SecurityEvent, SessionLocal, get_session
 from app.deps import get_api_key
-from app.usage import billable_this_month
+from app.usage import billable_this_month, key_month_usage
 from app.errors import GatewayError
 from app.ratelimit import limiter
-from app.schemas import StreamEvent, UnifiedChatRequest, UnifiedChatResponse
+from app.schemas import ChatMessage, StreamEvent, UnifiedChatRequest, UnifiedChatResponse
 
 router = APIRouter()
 log = logging.getLogger("gateway.data")
@@ -86,6 +86,19 @@ async def _resolve_upstream(session: AsyncSession, org_id: str, body: UnifiedCha
         raise GatewayError(502, "provider_credentials_unreadable", "Your saved provider key can't be read any more. Add it again under Providers.") from None
 
 
+def _key_limit_error(what: str) -> GatewayError:
+    return GatewayError(429, "key_limit_reached", f"This API key reached its monthly {what} limit.", {"Retry-After": "3600"})
+
+
+def _key_over(key: ApiKey, calls: int, tokens: int, *, reserved: bool) -> GatewayError | None:
+    """Per-key caps. `reserved` means this call is already counted in `calls`, so only going past the cap rejects it."""
+    if key.monthly_call_limit and (calls > key.monthly_call_limit if reserved else calls >= key.monthly_call_limit):
+        return _key_limit_error("call")
+    if key.monthly_token_limit and tokens >= key.monthly_token_limit:  # tokens are only known afterwards, so this one is checked before, not reserved
+        return _key_limit_error("token")
+    return None
+
+
 def _quota_error() -> GatewayError:
     return GatewayError(429, "quota_exceeded", "Monthly call quota reached. Upgrade your plan to continue.", {"Retry-After": "3600"})
 
@@ -103,15 +116,22 @@ class Prepared:
         return "flag" if self.flagged else "allow"
 
 
-async def _block_by_policy(session: AsyncSession, entry: RequestLog, verdict: policy.Verdict) -> GatewayError:
+async def _block_by_policy(session: AsyncSession, entry: RequestLog, events: list[policy.EventSpec], error: GatewayError, score: int = 0) -> GatewayError:
     """Record a call the org's policy refused (nothing was sent upstream, so it is neither billed nor counted toward quota)."""
     entry.decision, entry.status_code, entry.latency_ms = "block", 403, 0
+    entry.risk_score = score or None
     session.add(entry)
     await session.flush()
-    session.add(SecurityEvent(org_id=entry.org_id, log_id=entry.id, type="policy_denied", severity="medium", rule_id=verdict.rule,
-                              redacted_excerpt=f"model: {entry.model}"))
+    session.add_all(SecurityEvent(org_id=entry.org_id, log_id=entry.id, type=e.type, severity=e.severity, rule_id=e.rule_id,
+                                  redacted_excerpt=e.excerpt) for e in events)
     await session.commit()
-    return GatewayError(403, "model_not_allowed", f"The model '{entry.model}' is not allowed by your organization's policy.")
+    return error
+
+
+def _model_events(verdict: policy.Verdict, model: str, outcome: str) -> list[policy.EventSpec]:
+    if verdict.action == "allow":
+        return []
+    return [policy.EventSpec("policy_denied" if outcome == "blocked" else "policy_would_deny", "medium" if outcome == "blocked" else "low", verdict.rule or "", f"model: {model}")]
 
 
 async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool) -> Prepared:
@@ -122,29 +142,49 @@ async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, se
     org = await session.get(Organization, key.org_id)
     if await billable_this_month(key.org_id, s=session) >= org.monthly_call_quota:  # cheap early exit
         raise _quota_error()
+    limited = bool(key.monthly_call_limit or key.monthly_token_limit)
+    if limited:
+        calls, tokens = (await key_month_usage(session, key.org_id, key.id)).get(key.id, (0, 0))
+        if (over := _key_over(key, calls, tokens, reserved=False)):
+            raise over
     provider, credential, conn_id = await _resolve_upstream(session, key.org_id, body)
     body.model = body.model or DEFAULT_MODEL[provider]  # the effective model is what the policy judges
+    policies = await policy.load_policies(session, key.org_id)
+    model_verdict = policy.check_model(policies, body.model)
+    content = policy.check_content(policies, [(m.role, m.content) for m in body.messages])
+    if content.masked is not None:  # DLP in mask mode: what goes upstream is the redacted text
+        body.messages = [ChatMessage(role=m.role, content=text) for m, text in zip(body.messages, content.masked)]
+    # the hash is of what is actually sent: a hash of raw sensitive text could be brute-forced
     prompt_hash = hashlib.sha256("\n".join(m.content for m in body.messages).encode()).hexdigest()
     entry = RequestLog(org_id=key.org_id, key_id=key.id if track_key else None, request_id=request.state.request_id,
-                       provider=provider, model=body.model, status_code=200, decision="pending", prompt_hash=prompt_hash)
-    verdict = await policy.check_model(session, key.org_id, body.model)
-    if verdict.action == "block":
-        raise await _block_by_policy(session, entry, verdict)
+                       provider=provider, model=body.model, status_code=200, decision="pending", prompt_hash=prompt_hash,
+                       risk_score=content.score or None)
+    if model_verdict.action == "block":
+        raise await _block_by_policy(session, entry, _model_events(model_verdict, body.model, "blocked"),
+                                     GatewayError(403, "model_not_allowed", f"The model '{body.model}' is not allowed by your organization's policy."))
+    if content.action == "block":
+        raise await _block_by_policy(session, entry, content.events, GatewayError(403, "policy_violation", content.message), content.score)
+    flagged = model_verdict.action == "flag" or content.action == "flag"
     # Reserve first, then verify. The call is committed as "pending" before anything is sent upstream, so requests that run at
     # the same time see each other; one that would take the org over its quota backs out. (Counting first and writing the
     # row after the upstream answers let a burst of in-flight calls all read the same count.)
     session.add(entry)
     await session.flush()
-    if verdict.action == "flag":
-        session.add(SecurityEvent(org_id=entry.org_id, log_id=entry.id, type="policy_would_deny", severity="low", rule_id=verdict.rule,
-                                  redacted_excerpt=f"model: {entry.model}"))
+    session.add_all(SecurityEvent(org_id=entry.org_id, log_id=entry.id, type=e.type, severity=e.severity, rule_id=e.rule_id, redacted_excerpt=e.excerpt)
+                    for e in _model_events(model_verdict, body.model, "flagged") + content.events)
     await session.commit()
-    if await billable_this_month(key.org_id, s=session) > org.monthly_call_quota:
+    used = await billable_this_month(key.org_id, s=session)
+    over = _quota_error() if used > org.monthly_call_quota else None
+    if over is None and limited:
+        calls, tokens = (await key_month_usage(session, key.org_id, key.id)).get(key.id, (0, 0))
+        over = _key_over(key, calls, tokens, reserved=True)
+    if over is not None:  # another call got in first: back out the reservation
         await session.execute(delete(SecurityEvent).where(SecurityEvent.log_id == entry.id))
         await session.delete(entry)
         await session.commit()
-        raise _quota_error()
-    return Prepared(entry, credential, conn_id, verdict.action == "flag")
+        raise over
+    alerts.schedule(alerts.maybe_alert(key.org_id, used, org.monthly_call_quota))
+    return Prepared(entry, credential, conn_id, flagged)
 
 
 async def _chat(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True) -> UnifiedChatResponse:
@@ -199,11 +239,43 @@ def _error_event(rid: str, err: GatewayError) -> str:
     return f"data: {json.dumps({'error': {'code': err.code, 'message': err.message, 'request_id': rid}})}\n\n"
 
 
-def _settle_stream(entry: RequestLog, body: UnifiedChatRequest, started: float, p_tokens: int | None, c_tokens: int | None, emitted: int, final: str) -> None:
+class _StreamTally:
+    """What a stream has told us so far: token counts, characters sent and why it finished."""
+
+    def __init__(self) -> None:
+        self.prompt: int | None = None
+        self.completion: int | None = None
+        self.emitted = 0
+        self.finish: str | None = None
+
+    def take(self, ev: StreamEvent) -> str | None:
+        """Record one event; returns the text to forward to the caller, if the event carried any."""
+        if ev.type == "delta":
+            self.emitted += len(ev.text)
+            return ev.text
+        if ev.type == "usage":
+            self.prompt = self.prompt if ev.prompt_tokens is None else ev.prompt_tokens
+            self.completion = self.completion if ev.completion_tokens is None else ev.completion_tokens
+        elif ev.type == "finish":
+            self.finish = ev.finish_reason
+        return None
+
+
+def _stream_error(e: Exception, provider: str, *, first_chunk: bool) -> GatewayError:
+    """Whatever went wrong with a stream, as a GatewayError. Unexpected failures are logged (call this from the except block)."""
+    if isinstance(e, GatewayError):
+        return e
+    if isinstance(e, TimeoutError):
+        return _upstream_timeout() if first_chunk else GatewayError(504, "stream_timeout", "The response took too long and was stopped.")
+    log.exception("could not process the %s stream", provider)
+    return _invalid_upstream()
+
+
+def _settle_stream(entry: RequestLog, body: UnifiedChatRequest, started: float, tally: _StreamTally, final: str) -> None:
     """Final numbers for a stream's log row. Token counts are the provider's when it reported them, else an estimate (chars / 4)."""
     est_in = sum(len(m.content) for m in body.messages) // 4 + 1
-    entry.tokens_in = p_tokens if p_tokens is not None else est_in
-    entry.tokens_out = c_tokens if c_tokens is not None else emitted // 4 + (1 if emitted else 0)
+    entry.tokens_in = tally.prompt if tally.prompt is not None else est_in
+    entry.tokens_out = tally.completion if tally.completion is not None else tally.emitted // 4 + (1 if tally.emitted else 0)
     entry.latency_ms = int((time.monotonic() - started) * 1000)
     if entry.decision == "pending":  # finished normally, or the client left: the call happened and counts
         entry.decision = final
@@ -211,27 +283,20 @@ def _settle_stream(entry: RequestLog, body: UnifiedChatRequest, started: float, 
 
 async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, entry: RequestLog, key_id: str | None, started: float, final: str = "allow"):
     """Yields OpenAI-style chunks. Always settles exactly one log row, even if the client disconnects mid-stream."""
-    rid, p_tokens, c_tokens, emitted, finish = entry.request_id, None, None, 0, None
+    rid, tally = entry.request_id, _StreamTally()
     try:
         yield _chunk(rid, entry.model, {"role": "assistant"})
         pending = [first] if first is not None else []
         while True:
             left = MAX_STREAM_SECONDS - (time.monotonic() - started)
             ev = pending.pop() if pending else await asyncio.wait_for(gen.__anext__(), max(left, 0.001))
-            if ev.type == "delta":
-                emitted += len(ev.text)
-                yield _chunk(rid, entry.model, {"content": ev.text})
-            elif ev.type == "usage":
-                p_tokens = ev.prompt_tokens if ev.prompt_tokens is not None else p_tokens
-                c_tokens = ev.completion_tokens if ev.completion_tokens is not None else c_tokens
-            elif ev.type == "finish":
-                finish = ev.finish_reason
+            text = tally.take(ev)
+            if text:
+                yield _chunk(rid, entry.model, {"content": text})
     except StopAsyncIteration:
         pass
     except Exception as e:  # upstream failed after the stream began: say so in-band, then close
-        err = e if isinstance(e, GatewayError) else GatewayError(504, "stream_timeout", "The response took too long and was stopped.") if isinstance(e, TimeoutError) else _invalid_upstream()
-        if err is not e and not isinstance(e, TimeoutError):
-            log.exception("could not process the %s stream", entry.provider)
+        err = _stream_error(e, entry.provider, first_chunk=False)
         entry.status_code, entry.decision = err.status, "error"
         yield _error_event(rid, err)
         return
@@ -239,20 +304,20 @@ async def _sse(first: StreamEvent | None, gen, body: UnifiedChatRequest, entry: 
         entry.status_code = 499
         raise
     finally:
-        _settle_stream(entry, body, started, p_tokens, c_tokens, emitted, final)
+        _settle_stream(entry, body, started, tally, final)
         await asyncio.shield(_write_log(entry, key_id))
         try:
             await gen.aclose()
         except Exception:
             pass
     usage = {"prompt_tokens": entry.tokens_in, "completion_tokens": entry.tokens_out, "total_tokens": entry.tokens_in + entry.tokens_out}
-    yield _chunk(rid, entry.model, {}, finish or "stop", usage)
+    yield _chunk(rid, entry.model, {}, tally.finish or "stop", usage)
     yield "data: [DONE]\n\n"
 
 
 async def _chat_stream(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True):
     prep = await _preflight(request, body, key, session, track_key)
-    entry, conn_id, started = prep.entry, prep.conn_id, time.monotonic()
+    entry, started = prep.entry, time.monotonic()
     gen = ADAPTERS[entry.provider].stream_chat(body, prep.credential)
     key_id = key.id if track_key else None
     try:
@@ -260,15 +325,13 @@ async def _chat_stream(request: Request, body: UnifiedChatRequest, key: ApiKey, 
     except StopAsyncIteration:
         first = None
     except Exception as e:
-        err = e if isinstance(e, GatewayError) else _upstream_timeout() if isinstance(e, TimeoutError) else _invalid_upstream()
+        err = _stream_error(e, entry.provider, first_chunk=True)
         entry.status_code, entry.decision = err.status, "error"
         entry.latency_ms = int((time.monotonic() - started) * 1000)
-        await _flag_connection(conn_id, err.code)
+        await _flag_connection(prep.conn_id, err.code)
         await _write_log(entry, key_id)
         if err is e:
             raise
-        if not isinstance(e, TimeoutError):
-            log.exception("could not process the %s stream", entry.provider)
         raise err from e
     return StreamingResponse(_sse(first, gen, body, entry, key_id, started, prep.final_decision), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

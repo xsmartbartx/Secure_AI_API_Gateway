@@ -1,4 +1,6 @@
-export function BarSeries({ data, label }: { data: { day: string; calls: number; blocked: number }[]; label: string }) {
+type Day = { day: string; calls: number; blocked: number }
+
+export function BarSeries({ data, label }: Readonly<{ data: Day[]; label: string }>) {
   const max = Math.max(1, ...data.map(d => d.calls))
   const w = 100 / Math.max(7, data.length)
   return <figure>

@@ -4,14 +4,15 @@ import { expect, test } from './fixtures'
 test('an admin turns on enforcement and blocked calls show up in logs, security events and the overview', async ({ page, gateway }) => {
   const { secret } = await gateway.createKey('policy-key')
   await page.goto('/app/policies')
-  await expect(page.getByRole('radio', { name: /Off/ })).toBeChecked()
+  const card = page.getByRole('region', { name: 'Allowed models' })
+  await expect(card.getByRole('radio', { name: /Off/ })).toBeChecked()
 
-  await page.getByRole('radio', { name: /Enforce/ }).check()
+  await card.getByRole('radio', { name: /Enforce/ }).check()
   await page.getByLabel('Models on the list').fill('mock-*\nGPT-4o')
   page.once('dialog', d => { expect(d.message()).toContain('rejected immediately'); d.accept() })
-  await page.getByRole('button', { name: 'Save policy' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved (version 1)' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save policy' })).toBeDisabled() // nothing left to save
+  await card.getByRole('button', { name: 'Save policy' }).click()
+  await expect(card.getByRole('status').filter({ hasText: 'Saved (version 1)' })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Save policy' })).toBeDisabled() // nothing left to save
 
   // dry run against the saved policy
   await page.getByLabel('Model', { exact: true }).fill('gpt-4o')
@@ -33,7 +34,7 @@ test('an admin turns on enforcement and blocked calls show up in logs, security 
   await expect(row).toContainText('403')
 
   await page.getByRole('link', { name: 'Security' }).click()
-  await expect(page.getByRole('row').filter({ hasText: 'Call blocked: model not allowed' })).toContainText('model: claude-opus-9')
+  await expect(page.getByRole('row').filter({ hasText: 'Model not allowed' })).toContainText('model: claude-opus-9')
 
   await page.getByRole('link', { name: 'Overview' }).click()
   await expect(page.getByRole('link', { name: /^Blocked\s*1$/ })).toBeVisible()
@@ -43,10 +44,11 @@ test('an admin turns on enforcement and blocked calls show up in logs, security 
 test('monitor mode lets calls through and flags the ones that would be blocked', async ({ page, gateway }) => {
   const { secret } = await gateway.createKey('monitor-key')
   await page.goto('/app/policies')
-  await page.getByRole('radio', { name: /Monitor/ }).check()
+  const card = page.getByRole('region', { name: 'Allowed models' })
+  await card.getByRole('radio', { name: /Monitor/ }).check()
   await page.getByLabel('Models on the list').fill('gpt-4o')
-  await page.getByRole('button', { name: 'Save policy' }).click()      // no confirmation: monitoring blocks nothing
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  await card.getByRole('button', { name: 'Save policy' }).click()      // no confirmation: monitoring blocks nothing
+  await expect(card.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 
   expect((await gateway.call(secret, 'x', { model: 'mock-1' })).status()).toBe(200)
   await page.goto('/app/logs')
@@ -56,17 +58,20 @@ test('monitor mode lets calls through and flags the ones that would be blocked',
 
 test('turning the policy on with an empty list is refused with an explanation', async ({ page }) => {
   await page.goto('/app/policies')
-  await page.getByRole('radio', { name: /Monitor/ }).check()
-  await page.getByRole('button', { name: 'Save policy' }).click()
-  await expect(page.locator('p[role=alert]')).toContainText('at least one model')
+  const card = page.getByRole('region', { name: 'Allowed models' })
+  await card.getByRole('radio', { name: /Monitor/ }).check()
+  await card.getByRole('button', { name: 'Save policy' }).click()
+  await expect(card.locator('p[role=alert]')).toContainText('at least one model')
 })
 
 test('developers can read the policy but not change it', async ({ page, request, org }) => {
   await request.get('http://localhost:8411/api/me', { headers: { 'x-dev-org': org, 'x-dev-user': 'founder' } })
   await page.addInitScript(() => localStorage.setItem('devRole', 'developer'))
   await page.goto('/app/policies')
-  await expect(page.getByText('Only admins and owners can change policies.')).toBeVisible()
+  await expect(page.getByText('Only admins and owners can change policies.').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save policy' })).toHaveCount(0)
   await expect(page.getByLabel('Models on the list')).toHaveAttribute('readonly', '')
-  await expect(page.getByRole('radio', { name: /Enforce/ })).toBeDisabled()
+  for (const region of ['Allowed models', 'Sensitive data', 'Prompt injection'])
+    await expect(page.getByRole('region', { name: region }).getByRole('radio', { name: /Enforce/ })).toBeDisabled()
+  await expect(page.getByRole('region', { name: 'Try the detectors' })).toHaveCount(0)   // the scan tester is an admin tool
 })

@@ -1,5 +1,5 @@
 'use client'
-import { Button, Card, PageHeader, Skeleton } from '@/components/ui'
+import { Button, Card, Meter, PageHeader, Skeleton } from '@/components/ui'
 import { useApi } from '@/lib/use-fetch'
 import { api } from '@/lib/api'
 import { useState } from 'react'
@@ -24,8 +24,7 @@ export default function Billing() {
         <p className="text-xs font-medium text-text-muted">Current plan</p>
         {me.loading ? <Skeleton className="mt-2 h-7 w-24" /> : <p className="mt-1 text-[28px] font-semibold capitalize leading-[34px]">{me.data?.org.plan}</p>}
         <div className="mt-6"><div className="flex justify-between text-sm"><span>Calls this month</span><span>{used} / {limit}</span></div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Monthly quota used">
-            <div className={`h-full ${pct >= 100 ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-accent'}`} style={{ width: `${pct}%` }} /></div>
+          <Meter pct={pct} label="Monthly quota used" className="mt-2 h-2" />
           {pct >= 80 && <p className="mt-2 text-sm text-warning">You have used {pct}% of this month's calls.</p>}</div>
       </Card>
       <Card className="p-6"><h2 className="font-semibold">Starter · $19 / month</h2><p className="mt-1 text-text-muted">1,500 calls per month.</p>

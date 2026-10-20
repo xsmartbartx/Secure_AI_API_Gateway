@@ -6,6 +6,6 @@ export const metadata: Metadata = {
   description: 'One governed entry point for every model call your organization makes.',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="en"><body>{children}</body></html>
 }

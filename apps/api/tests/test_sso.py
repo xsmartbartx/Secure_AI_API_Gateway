@@ -58,7 +58,8 @@ async def test_valid_token_provisions_org_and_owner(client):
 
 async def test_personal_workspace_when_no_org(client):
     r = await client.get("/api/me", headers=bearer())
-    assert r.status_code == 200 and r.json()["org"]["name"] == "user_1"
+    assert r.status_code == 200
+    assert r.json()["org"]["name"] == "user_1"
 
 
 async def test_clerk_v2_org_claim(client):
@@ -69,7 +70,8 @@ async def test_clerk_v2_org_claim(client):
 
 async def test_expired_token_rejected(client):
     r = await client.get("/api/me", headers=bearer(exp=int(time.time()) - 10))
-    assert r.status_code == 401 and r.json()["error"]["code"] == "invalid_session"
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "invalid_session"
 
 
 async def test_wrong_issuer_rejected(client):

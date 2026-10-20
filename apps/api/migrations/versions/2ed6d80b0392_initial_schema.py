@@ -5,7 +5,7 @@ Revises:
 Create Date: 2026-10-13 11:35:08.706998
 
 """
-from typing import Sequence, Union
+from typing import Sequence
 
 from alembic import op
 import sqlalchemy as sa
@@ -13,9 +13,12 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '2ed6d80b0392'
-down_revision: Union[str, Sequence[str], None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+ORG_ID = 'organizations.id'
 
 
 def upgrade() -> None:
@@ -47,7 +50,7 @@ def upgrade() -> None:
     sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['org_id'], ['organizations.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['org_id'], [ORG_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('key_hash')
     )
@@ -59,7 +62,7 @@ def upgrade() -> None:
     sa.Column('email', sa.String(), nullable=False),
     sa.Column('role', sa.String(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['org_id'], ['organizations.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['org_id'], [ORG_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_members_external_user_id'), 'members', ['external_user_id'], unique=False)
@@ -72,7 +75,7 @@ def upgrade() -> None:
     sa.Column('status', sa.String(), nullable=False),
     sa.Column('current_period_end', sa.DateTime(timezone=True), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['org_id'], ['organizations.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['org_id'], [ORG_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('org_id'),
     sa.UniqueConstraint('stripe_customer_id'),
     sa.UniqueConstraint('stripe_subscription_id')
@@ -94,7 +97,7 @@ def upgrade() -> None:
     sa.Column('cost_micros', sa.BigInteger(), nullable=False),
     sa.Column('latency_ms', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['key_id'], ['api_keys.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['org_id'], ['organizations.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['org_id'], [ORG_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_logs_org_decision_ts', 'request_logs', ['org_id', 'decision', 'ts'], unique=False)
@@ -109,7 +112,7 @@ def upgrade() -> None:
     sa.Column('redacted_excerpt', sa.String(), nullable=True),
     sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['log_id'], ['request_logs.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['org_id'], ['organizations.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['org_id'], [ORG_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_security_events_log_id'), 'security_events', ['log_id'], unique=False)

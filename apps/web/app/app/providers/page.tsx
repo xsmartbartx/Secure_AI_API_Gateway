@@ -8,7 +8,7 @@ import { useApi } from '@/lib/use-fetch'
 type Conn = { id: string; provider: 'anthropic' | 'openai'; label: string; hint: string; is_default: boolean; status: 'ok' | 'failing' | 'untested'; created_at: string }
 const NAMES = { anthropic: 'Anthropic', openai: 'OpenAI' } as const
 
-function Status({ s }: { s: Conn['status'] }) {
+function Status({ s }: Readonly<{ s: Conn['status'] }>) {
   const m = { ok: ['bg-success-subtle text-success', Check, 'Working'], failing: ['bg-danger-subtle text-danger', AlertTriangle, 'Failing'], untested: ['bg-surface text-text-muted', CircleDashed, 'Not tested'] } as const
   const [c, Icon, label] = m[s]
   return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${c}`}><Icon size={12} aria-hidden />{label}</span>
@@ -62,7 +62,7 @@ export default function Providers() {
     <Card className="overflow-x-auto">
       {loading && <div className="space-y-3 p-4">{[0, 1].map(i => <Skeleton key={i} className="h-6" />)}</div>}
       {error && <ErrorState message={error.message} onRetry={reload} />}
-      {data && data.items.length === 0 && <Empty title="No provider keys yet" help="Until you add one, calls go through the shared provider NEXORA configures." />}
+      {data?.items.length === 0 && <Empty title="No provider keys yet" help="Until you add one, calls go through the shared provider NEXORA configures." />}
       {data && data.items.length > 0 && <ul className="divide-y divide-border">{data.items.map(c => <li key={c.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
         <div className="min-w-48 flex-1"><p className="font-medium">{c.label}{c.is_default && <span className="ml-2 rounded bg-accent-subtle px-1.5 py-0.5 text-xs font-medium text-accent">Default</span>}</p>
           <p className="text-sm text-text-muted">{NAMES[c.provider]} · <span className="font-mono">{c.hint}</span></p></div>

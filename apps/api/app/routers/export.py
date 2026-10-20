@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -66,7 +67,7 @@ async def _export(org_id: str):
 
 
 @router.get("/org/export")
-async def export_org(p: Principal = Depends(require("admin"))):
+async def export_org(p: Annotated[Principal, Depends(require("admin"))]):
     ok, retry = await limiter.allow(f"export:{p.org.id}", 3)  # a full export reads every table: keep it from being a load tool
     if not ok:
         raise GatewayError(429, "rate_limited", "Too many exports. Try again in a minute.", {"Retry-After": str(retry)})
@@ -77,7 +78,7 @@ async def export_org(p: Principal = Depends(require("admin"))):
 
 
 @router.get("/me/export")
-async def export_me(p: Principal = Depends(require("viewer", allow_suspended=True))):
+async def export_me(p: Annotated[Principal, Depends(require("viewer", allow_suspended=True))]):
     """The caller's own record: what Gateway holds about them as a person (not the organization's data or other members)."""
     return JSONResponse({"generated_at": dt.datetime.now(dt.timezone.utc).isoformat(), "member": _row(p.member),
                          "organization": {"id": p.org.id, "name": p.org.name},

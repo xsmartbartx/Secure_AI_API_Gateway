@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:3000"
 
     CORS_ORIGINS: str = "http://localhost:3000,https://gateway.onenexora.com"
+    # Email alerts (80% / 100% of the monthly quota) through Resend. Empty key = no email; the dashboard banner still shows.
+    RESEND_API_KEY: str = ""
+    ALERT_FROM_EMAIL: str = ""  # e.g. "NEXORA Gateway <alerts@your-verified-domain>"
+
     # 32 random bytes, base64. Encrypts customers' provider API keys at rest (AES-256-GCM). Required when ENV=prod.
     CREDENTIAL_ENCRYPTION_KEY: str = ""
 

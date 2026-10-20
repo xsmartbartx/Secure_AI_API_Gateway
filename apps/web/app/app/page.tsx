@@ -5,7 +5,7 @@ import { Button, Card, Empty, ErrorState, PageHeader, Skeleton } from '@/compone
 import type { Overview } from '@/lib/api'
 import { useApi } from '@/lib/use-fetch'
 
-function Tile({ label, value, href }: { label: string; value: string; href: string }) {
+function Tile({ label, value, href }: Readonly<{ label: string; value: string; href: string }>) {
   return <Link href={href}><Card className="p-4 hover:border-accent"><p className="text-xs font-medium text-text-muted">{label}</p><p className="mt-1 text-[28px] font-semibold leading-[34px]">{value}</p></Card></Link>
 }
 
@@ -15,7 +15,7 @@ export default function OverviewPage() {
     <PageHeader title="Overview" description="Last 7 days across all keys." action={<Link href="/app/keys"><Button variant="secondary">Manage keys</Button></Link>} />
     {loading && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map(i => <Card key={i} className="space-y-3 p-4"><Skeleton className="w-20" /><Skeleton className="h-8 w-28" /></Card>)}</div>}
     {error && <Card><ErrorState message={error.message} onRetry={reload} /></Card>}
-    {data && data.calls === 0 && <Card><Empty title="No calls yet" help="Create a key and make your first request. It will show up here within seconds." action={<Link href="/app/keys"><Button>Create your first key</Button></Link>} /></Card>}
+    {data?.calls === 0 && <Card><Empty title="No calls yet" help="Create a key and make your first request. It will show up here within seconds." action={<Link href="/app/keys"><Button>Create your first key</Button></Link>} /></Card>}
     {data && data.calls > 0 && <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Tile label="Calls" value={data.calls.toLocaleString()} href="/app/logs" />

@@ -22,9 +22,9 @@ Audit logging (no raw prompt by default),api,must,yes,yes,
 Multi-provider routing (OpenAI/Anthropic/Azure OpenAI),api,should,no,partial,"per-org keys for Anthropic + OpenAI, choose by request `provider` or org default; no fallback/routing rules, no Azure OpenAI"
 Provider credential vault page,dashboard,should,no,yes,"bring your own Anthropic/OpenAI key: verified with the provider, AES-GCM encrypted, never returned; default + test + remove; no custom base URL (SSRF) yet"
 Model allowlist policy,policy,should,no,yes,"glob patterns per org, off/monitor/enforce, checked before dispatch (default model too), blocked calls logged + security event + not billed, dry-run tester"
-DLP masking/blocking (email/card/IBAN/PESEL/secrets),security,should,no,no,from architecture doc
-Prompt injection detection (monitor mode first),security,should,no,no,
-Risk score + decision,security,could,no,no,
+DLP masking/blocking (email/card/IBAN/PESEL/secrets),security,should,no,yes,"email, card (Luhn), IBAN (mod 97), PESEL (checksum), AWS key, API key, JWT, private key; off/monitor/enforce with block or mask; bounded linear-time patterns; matched text never stored"
+Prompt injection detection (monitor mode first),security,should,no,partial,"phrase heuristics on user and assistant turns, off/monitor/enforce; will miss attacks and can flag harmless text; no ML"
+Risk score + decision,security,could,no,partial,risk_score set from the worst finding (0-100) and shown in the log drawer; no behavioural or ML scoring
 Security events feed,dashboard,should,no,partial,shows policy blocks and monitor flags; DLP/injection detectors not built
 Team + RBAC,dashboard,should,no,yes,"member list, role changes (owner all, admin only developer/viewer), reversible suspend, self-edit blocked; invites stay in the NEXORA account"
 Webhooks / SIEM export,integration,could,no,no,Splunk/Sentinel/Elastic
@@ -33,8 +33,8 @@ Terms/Privacy/DPA reviewed by lawyer,legal,must,draft,partial,draft placeholder 
 Compliance badges (SOC2/ISO),skip,could,no,no,skip: do not claim until real
 Self-hosted Kong/K8s/Keycloak deployment,skip,could,no,no,out of MVP
 Microsoft/Apple branding assets,skip,could,no,no,skip: patterns only
-Per-key monthly spend/call limits + alerts,dashboard,should,no,no,from replica-entrepreneur
-Usage alerts (80%/100% quota email),dashboard,should,no,no,from replica-entrepreneur
+Per-key monthly spend/call limits + alerts,dashboard,should,no,yes,"per-key monthly call and token limits (429 key_limit_reached), calls reserved before dispatch, usage shown per key; no money/cost limit because cost is not computed"
+Usage alerts (80%/100% quota email),dashboard,should,no,yes,80% and 100% quota emails to owners/admins once per month each via Resend (needs RESEND_API_KEY + ALERT_FROM_EMAIL) plus an always-on dashboard banner
 Published gateway latency overhead (p50/p95),site,should,no,no,from replica-entrepreneur
 "Data-handling page (what is stored, retention)",site,must,no,no,from replica-entrepreneur
 Model aliasing,api,could,no,no,from replica-entrepreneur

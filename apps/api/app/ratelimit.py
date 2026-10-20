@@ -17,7 +17,7 @@ class MemorySlidingWindow:
         self.window = window
         self.hits: dict[str, deque[float]] = defaultdict(deque)
 
-    async def allow(self, key: str, limit: int) -> tuple[bool, int]:
+    async def allow(self, key: str, limit: int) -> tuple[bool, int]:  # NOSONAR: async to match the Limiter interface (the Redis limiter awaits)
         now = time.monotonic()
         q = self.hits[key]
         while q and now - q[0] >= self.window:

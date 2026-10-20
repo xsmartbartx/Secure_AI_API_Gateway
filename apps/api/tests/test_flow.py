@@ -39,18 +39,22 @@ async def test_first_call_loop(client):
     assert k["secret"].startswith("nx_live_")
     r = await client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]},
                           headers={"authorization": f"Bearer {k['secret']}"})
-    assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"].startswith("[mock]")
+    assert r.status_code == 200
+    assert r.json()["choices"][0]["message"]["content"].startswith("[mock]")
     assert r.headers["x-nexora-request-id"].startswith("req_")
     logs = (await client.get("/api/logs", headers=DEV)).json()["items"]
-    assert len(logs) == 1 and logs[0]["decision"] == "allow"
+    assert len(logs) == 1
+    assert logs[0]["decision"] == "allow"
     keys = (await client.get("/api/keys", headers=DEV)).json()["items"]
-    assert "secret" not in keys[0] and keys[0]["last_used_at"]
+    assert "secret" not in keys[0]
+    assert keys[0]["last_used_at"]
 
 
 async def test_bad_key_envelope(client):
     r = await client.post("/v1/chat", json={"messages": [{"role": "user", "content": "x"}]},
                           headers={"authorization": "Bearer nx_live_nope"})
-    assert r.status_code == 401 and r.json()["error"]["code"] == "invalid_key"
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "invalid_key"
 
 
 async def test_revoked_key_rejected(client):
@@ -91,7 +95,8 @@ async def test_quota(client):
         await s.commit()
     assert (await client.post("/v1/chat", json=body, headers=h)).status_code == 200
     r = await client.post("/v1/chat", json=body, headers=h)
-    assert r.status_code == 429 and r.json()["error"]["code"] == "quota_exceeded"
+    assert r.status_code == 429
+    assert r.json()["error"]["code"] == "quota_exceeded"
 
 
 async def test_viewer_cannot_create_key(client):
@@ -106,14 +111,17 @@ async def test_openai_alias_and_validation(client):
     r = await client.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": "x"}]}, headers=h)
     assert r.json()["object"] == "chat.completion"
     r = await client.post("/v1/chat", json={"messages": []}, headers=h)
-    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_request"
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "invalid_request"
 
 
 async def test_playground_logs_without_key(client):
     r = await client.post("/api/playground", json={"prompt": "hello"}, headers=DEV)
-    assert r.status_code == 200 and "[mock]" in r.json()["choices"][0]["message"]["content"]
+    assert r.status_code == 200
+    assert "[mock]" in r.json()["choices"][0]["message"]["content"]
     logs = (await client.get("/api/logs", headers=DEV)).json()["items"]
-    assert len(logs) == 1 and logs[0]["key_id"] is None
+    assert len(logs) == 1
+    assert logs[0]["key_id"] is None
 
 
 # ---- billing / webhooks ----
@@ -128,14 +136,15 @@ def _signed(payload: dict, secret="whsec_test"):
     return body, {"stripe-signature": f"t={t},v1={sig}", "content-type": "application/json"}
 
 
-async def test_webhook_rejects_bad_signature(client):
-    settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+async def test_webhook_rejects_bad_signature(client, monkeypatch):
+    monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_test")
     r = await client.post("/webhooks/stripe", content=b"{}", headers={"stripe-signature": "t=1,v1=bad"})
-    assert r.status_code == 400 and r.json()["error"]["code"] == "bad_signature"
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "bad_signature"
 
 
-async def test_webhook_upgrades_plan_and_is_idempotent(client):
-    settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+async def test_webhook_upgrades_plan_and_is_idempotent(client, monkeypatch):
+    monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_test")
     await make_key(client)
     me = (await client.get("/api/me", headers=DEV)).json()
     ev = {"id": "evt_1", "object": "event", "type": "checkout.session.completed", "data": {"object": {
@@ -147,8 +156,8 @@ async def test_webhook_upgrades_plan_and_is_idempotent(client):
     assert (await client.post("/webhooks/stripe", content=body, headers=h)).json()["duplicate"] is True
 
 
-async def test_cancel_downgrades(client):
-    settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+async def test_cancel_downgrades(client, monkeypatch):
+    monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_test")
     await make_key(client)
     org_id = (await client.get("/api/me", headers=DEV)).json()["org"]["id"]
     up = {"id": "evt_a", "object": "event", "type": "checkout.session.completed", "data": {"object": {"object": "checkout.session", "mode": "subscription", "client_reference_id": org_id, "subscription": "sub_1"}}}
@@ -159,10 +168,11 @@ async def test_cancel_downgrades(client):
     assert (await client.get("/api/me", headers=DEV)).json()["org"]["quota"] == 100
 
 
-async def test_checkout_disabled_without_stripe(client):
-    settings.STRIPE_SECRET_KEY = ""
+async def test_checkout_disabled_without_stripe(client, monkeypatch):
+    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
     r = await client.post("/api/billing/checkout", headers=DEV)
-    assert r.status_code == 503 and r.json()["error"]["code"] == "billing_disabled"
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "billing_disabled"
 
 
 # ---- bugs found by replica-test (written failing first) ----
@@ -182,7 +192,8 @@ async def test_B2_timestamps_are_utc_aware(client):
 async def test_B5_invalid_json_message(client):
     k = await make_key(client)
     r = await client.post("/v1/chat", content=b"nope", headers={"authorization": f"Bearer {k['secret']}", "content-type": "application/json"})
-    assert r.status_code == 422 and r.json()["error"]["message"].startswith("Request body is not valid JSON")
+    assert r.status_code == 422
+    assert r.json()["error"]["message"].startswith("Request body is not valid JSON")
 
 
 # ---- found by the Playwright suite: the dashboard fires several requests at once on a user's first visit ----

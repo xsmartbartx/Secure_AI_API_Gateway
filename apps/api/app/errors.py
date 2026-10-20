@@ -15,5 +15,5 @@ def envelope(status: int, code: str, message: str, request_id: str = "", headers
     )
 
 
-async def gateway_error_handler(request: Request, exc: GatewayError):
+async def gateway_error_handler(request: Request, exc: GatewayError):  # NOSONAR: Starlette awaits exception handlers
     return envelope(exc.status, exc.code, exc.message, getattr(request.state, "request_id", ""), exc.headers)

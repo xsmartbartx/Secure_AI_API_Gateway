@@ -14,6 +14,7 @@ from sqlalchemy.dialects import postgresql
 from app import retention
 from app.config import settings
 from app.db import Base, Policy, RequestLog, SessionLocal, engine
+from app.errors import GatewayError
 from app.main import app
 from app.routers import data, team
 
@@ -26,7 +27,6 @@ async def fresh():
     async with engine.begin() as c:
         await c.run_sync(Base.metadata.drop_all)
         await c.run_sync(Base.metadata.create_all)
-    yield
 
 
 @pytest.fixture
@@ -134,9 +134,9 @@ async def test_the_last_active_owner_guard_refuses_a_state_with_no_owner(client)
         owner = (await s.execute(select(Member))).scalar_one()
         owner.role = "viewer"          # the state another transaction could have committed
         await s.flush()
-        with pytest.raises(Exception) as e:
+        with pytest.raises(GatewayError) as e:
             await team._ensure_active_owner(s, org_id)
-        assert getattr(e.value, "code", "") == "last_owner"
+        assert e.value.code == "last_owner"
 
 
 # --- log hygiene (SonarCloud pythonsecurity:S5145, log injection) ---

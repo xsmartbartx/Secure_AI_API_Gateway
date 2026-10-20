@@ -22,7 +22,6 @@ async def fresh():
     async with engine.begin() as c:
         await c.run_sync(Base.metadata.drop_all)
         await c.run_sync(Base.metadata.create_all)
-    yield
 
 
 @pytest.fixture
@@ -58,7 +57,8 @@ def days_ago(n, hour=12):
 
 
 async def test_retention_table():
-    assert RETENTION_DAYS["free"] == 7 and RETENTION_DAYS["starter"] == 30
+    assert RETENTION_DAYS["free"] == 7
+    assert RETENTION_DAYS["starter"] == 30
 
 
 async def test_purges_only_expired_logs_for_the_plan(client):
@@ -68,7 +68,8 @@ async def test_purges_only_expired_logs_for_the_plan(client):
     await log(org, key, days_ago(8), event=True)
     await log(org, key, days_ago(20))
     res = await purge_expired(NOW)
-    assert res["logs_deleted"] == 2 and await count(RequestLog, org) == 2
+    assert res["logs_deleted"] == 2
+    assert await count(RequestLog, org) == 2
     assert await count(SecurityEvent, org) == 0  # events of purged logs go with them
 
 
@@ -100,7 +101,8 @@ async def test_rollup_preserves_usage_numbers(client, monkeypatch):
 
     before = {g: (await client.get(f"/api/usage?from={start}&to={end}&group={g}", headers=A)).json() for g in ("key", "model", "day")}
     await purge_expired(NOW)
-    assert await count(RequestLog, org) == 1 and await count(UsageDaily, org) > 0
+    assert await count(RequestLog, org) == 1
+    assert await count(UsageDaily, org) > 0
     after = {g: (await client.get(f"/api/usage?from={start}&to={end}&group={g}", headers=A)).json() for g in ("key", "model", "day")}
     for g in before:
         assert after[g]["totals"] == before[g]["totals"], g
@@ -116,7 +118,8 @@ async def test_rollup_is_not_double_counted_on_rerun(client):
     await purge_expired(NOW)
     async with SessionLocal() as s:
         total = (await s.execute(select(func.sum(UsageDaily.calls)).where(UsageDaily.org_id == org))).scalar_one()
-    assert first == 1 and total == 2  # replaced the day's rollup with the full recount, not added twice
+    assert first == 1
+    assert total == 2  # replaced the day's rollup with the full recount, not added twice
 
 
 async def test_monthly_quota_survives_purge(client):

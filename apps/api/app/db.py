@@ -28,6 +28,9 @@ def _id() -> str:
     return str(uuid.uuid4())
 
 
+ORG_ID = "organizations.id"  # the foreign-key target every org-owned table points at
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -45,7 +48,7 @@ class Organization(Base):
 class Member(Base):
     __tablename__ = "members"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), index=True)
     external_user_id: Mapped[str] = mapped_column(String, index=True)
     email: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String, default="developer")
@@ -57,12 +60,14 @@ class Member(Base):
 class ApiKey(Base):
     __tablename__ = "api_keys"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String)
     prefix: Mapped[str] = mapped_column(String)
     key_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
     last4: Mapped[str] = mapped_column(String)
     rpm_limit: Mapped[int] = mapped_column(Integer, default=60)
+    monthly_call_limit: Mapped[int | None] = mapped_column(Integer)    # optional per-key caps; NULL = no cap beyond the org quota
+    monthly_token_limit: Mapped[int | None] = mapped_column(BigInteger)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime())
     revoked_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
@@ -71,7 +76,7 @@ class ApiKey(Base):
 class RequestLog(Base):
     __tablename__ = "request_logs"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"))
     key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
     request_id: Mapped[str] = mapped_column(String)
     ts: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
@@ -94,7 +99,7 @@ class RequestLog(Base):
 class SecurityEvent(Base):
     __tablename__ = "security_events"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), index=True)
     log_id: Mapped[str] = mapped_column(ForeignKey("request_logs.id", ondelete="CASCADE"), index=True)
     type: Mapped[str] = mapped_column(String)
     severity: Mapped[str] = mapped_column(String)
@@ -105,7 +110,7 @@ class SecurityEvent(Base):
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), primary_key=True)
     stripe_customer_id: Mapped[str | None] = mapped_column(String, unique=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String, unique=True)
     plan: Mapped[str] = mapped_column(String, default="free")
@@ -125,7 +130,7 @@ class ProviderConnection(Base):
     """An organization's own model-provider API key. The key is encrypted (AES-GCM, bound to this row) and never returned by the API."""
     __tablename__ = "provider_connections"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String)  # anthropic | openai
     label: Mapped[str] = mapped_column(String)
     credential_enc: Mapped[bytes] = mapped_column(LargeBinary)
@@ -140,7 +145,7 @@ class Policy(Base):
     """An organization's rule set for one policy type. type 'model_allow': config {"models": [glob patterns]}."""
     __tablename__ = "policies"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), index=True)
     type: Mapped[str] = mapped_column(String)
     mode: Mapped[str] = mapped_column(String, default="off")  # off | monitor | enforce
     config: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -150,12 +155,23 @@ class Policy(Base):
     __table_args__ = (UniqueConstraint("org_id", "type", name="uq_policies_org_type"),)
 
 
+class AlertSent(Base):
+    """One row per (organization, month, alert kind): the claim that stops the same alert going out twice."""
+    __tablename__ = "alerts_sent"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"), index=True)
+    month: Mapped[str] = mapped_column(String)  # YYYY-MM (UTC)
+    kind: Mapped[str] = mapped_column(String)   # quota_80 | quota_100
+    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), default=_now)
+    __table_args__ = (UniqueConstraint("org_id", "month", "kind", name="uq_alerts_org_month_kind"),)
+
+
 class UsageDaily(Base):
     """Counts only, no content. Written when request_logs are purged so usage history and the monthly quota outlive log retention.
     key_id is a plain string (no FK) so history survives key deletion."""
     __tablename__ = "usage_daily"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_id)
-    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    org_id: Mapped[str] = mapped_column(ForeignKey(ORG_ID, ondelete="CASCADE"))
     day: Mapped[dt.date] = mapped_column(Date)
     key_id: Mapped[str | None] = mapped_column(String)
     model: Mapped[str] = mapped_column(String, default="unknown")

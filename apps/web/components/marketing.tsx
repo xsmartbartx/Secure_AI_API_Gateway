@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ReactNode } from 'react'
 
-export function MarketingShell({ children }: { children: ReactNode }) {
+export function MarketingShell({ children }: Readonly<{ children: ReactNode }>) {
   return <>
     <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:bg-bg focus:p-2">Skip to content</a>
     <header className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur">

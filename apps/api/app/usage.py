@@ -63,3 +63,20 @@ async def billable_this_month(org_id: str, now: dt.datetime | None = None, s: As
         return await run(s)
     async with SessionLocal() as own:
         return await run(own)
+
+
+async def key_month_usage(s: AsyncSession, org_id: str, key_id: str | None = None, now: dt.datetime | None = None) -> dict[str | None, tuple[int, int]]:
+    """This month's (billable calls, tokens) per API key: live logs plus the rollups retention writes. One key, or all of them."""
+    first = (now or dt.datetime.now(dt.timezone.utc)).date().replace(day=1)
+    live = (select(RequestLog.key_id, func.sum(case((RequestLog.decision.notin_(("error", "block")), 1), else_=0)),
+                   func.sum(RequestLog.tokens_in + RequestLog.tokens_out))
+            .where(RequestLog.org_id == org_id, RequestLog.ts >= utc_midnight(first)).group_by(RequestLog.key_id))
+    rolled = (select(UsageDaily.key_id, func.sum(UsageDaily.billable), func.sum(UsageDaily.tokens_in + UsageDaily.tokens_out))
+              .where(UsageDaily.org_id == org_id, UsageDaily.day >= first).group_by(UsageDaily.key_id))
+    if key_id is not None:
+        live, rolled = live.where(RequestLog.key_id == key_id), rolled.where(UsageDaily.key_id == key_id)
+    out: dict[str | None, tuple[int, int]] = {}
+    for k, calls, tokens in list((await s.execute(live)).all()) + list((await s.execute(rolled)).all()):
+        c, t = out.get(k, (0, 0))
+        out[k] = (c + int(calls or 0), t + int(tokens or 0))
+    return out
