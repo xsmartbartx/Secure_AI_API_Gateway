@@ -6,6 +6,9 @@ import { Mode, ModeFieldset, SaveRow } from './shared'
 
 export type DlpPolicy = { mode: Mode; detectors: string[]; action: 'block' | 'mask'; available: string[]; labels: Record<string, string>; version: number }
 
+/** Whether two lists hold the same entries, in any order. */
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(x => b.includes(x))
+
 const OPTIONS = [
   { value: 'off' as const, label: 'Off', help: 'Calls are not inspected for sensitive data.' },
   { value: 'monitor' as const, label: 'Monitor', help: 'Calls go through untouched. Anything found is flagged in Logs and Security events, so you can see what a rule would catch.' },
@@ -19,7 +22,7 @@ export function DlpCard({ policy, canEdit, onSaved }: Readonly<{ policy: DlpPoli
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   useEffect(() => { setMode(policy.mode); setDetectors(policy.detectors); setAction(policy.action) }, [policy])
-  const dirty = mode !== policy.mode || action !== policy.action || detectors.slice().sort().join() !== policy.detectors.slice().sort().join()
+  const dirty = mode !== policy.mode || action !== policy.action || !sameSet(detectors, policy.detectors)
   const toggle = (k: string) => setDetectors(d => d.includes(k) ? d.filter(x => x !== k) : [...d, k])
 
   async function save(e: React.FormEvent) {
