@@ -1,9 +1,12 @@
+import logging
 import time
 import uuid
 from collections import defaultdict, deque
 from typing import Protocol
 
 from app.config import settings
+
+log = logging.getLogger("gateway.ratelimit")
 
 
 class Limiter(Protocol):
@@ -28,29 +31,46 @@ class MemorySlidingWindow:
         return True, 0
 
 
-class RedisSlidingWindow:
-    """Sorted-set sliding window shared by every API worker."""
+# One round trip, atomic inside Redis: drop expired entries, count, and record this call only if there is room. Checking and
+# recording in separate commands let parallel callers all pass the check before any recorded itself (28 calls got through a
+# limit of 20 in a test with four workers). Redis's own clock is used so workers on different machines cannot disagree.
+_SLIDING_WINDOW_LUA = """
+local t = redis.call('TIME')
+local now = tonumber(t[1]) + tonumber(t[2]) / 1000000
+local window, limit = tonumber(ARGV[1]), tonumber(ARGV[2])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
+if redis.call('ZCARD', KEYS[1]) >= limit then
+  local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+  local retry = 1
+  if oldest[2] then retry = math.max(1, math.ceil(window - (now - tonumber(oldest[2])))) end
+  return {0, retry}
+end
+redis.call('ZADD', KEYS[1], now, ARGV[3])
+redis.call('EXPIRE', KEYS[1], math.ceil(window) + 5)
+return {1, 0}
+"""
 
-    def __init__(self, url: str, window: int = 60):
+
+class RedisSlidingWindow:
+    """Sliding-window limiter shared by every API worker. If Redis cannot be reached the limiter fails open (and logs):
+    a Redis outage must not take the whole API down, and the quota is enforced from the database either way."""
+
+    def __init__(self, url: str, window: int = 60, max_connections: int = 100):
         import redis.asyncio as redis
-        self.r = redis.from_url(url)
+        # A blocking pool waits briefly for a free connection instead of raising when a burst needs more than the pool holds.
+        pool = redis.BlockingConnectionPool.from_url(url, max_connections=max_connections, timeout=2,
+                                                     socket_timeout=2, socket_connect_timeout=2, health_check_interval=30)
+        self.r = redis.Redis(connection_pool=pool)
         self.window = window
+        self._script = self.r.register_script(_SLIDING_WINDOW_LUA)
 
     async def allow(self, key: str, limit: int) -> tuple[bool, int]:
-        k, now = f"rl:{key}", time.time()
-        pipe = self.r.pipeline()
-        pipe.zremrangebyscore(k, 0, now - self.window)
-        pipe.zcard(k)
-        _, count = await pipe.execute()
-        if count >= limit:
-            oldest = await self.r.zrange(k, 0, 0, withscores=True)
-            retry = max(1, int(self.window - (now - oldest[0][1]))) if oldest else 1
-            return False, retry
-        pipe = self.r.pipeline()
-        pipe.zadd(k, {uuid.uuid4().hex: now})
-        pipe.expire(k, self.window + 5)
-        await pipe.execute()
-        return True, 0
+        try:
+            ok, retry = await self._script(keys=[f"rl:{key}"], args=[self.window, limit, uuid.uuid4().hex])
+        except Exception:  # RedisError, timeouts, a dropped connection
+            log.warning("rate limiter unavailable (Redis); allowing the call", exc_info=True)
+            return True, 0
+        return bool(ok), int(retry)
 
 
 limiter: Limiter = RedisSlidingWindow(settings.REDIS_URL) if settings.REDIS_URL else MemorySlidingWindow()

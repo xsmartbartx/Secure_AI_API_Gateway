@@ -6,7 +6,7 @@
 - Quota per org per month (429 `quota_exceeded`), rate limit (429 + `Retry-After`).
 - Roles (viewer/developer/admin/owner) enforced per route; cross-org access returns empty/404 (tested).
 - Control-plane auth: dev headers (dev only) or JWT via JWKS (`AUTH_JWKS_URL`, `AUTH_ISSUER`); prod refuses to boot without them and without `REDIS_URL`.
-- Redis sliding-window limiter (same interface as the in-memory one). **Not exercised against a real Redis yet.**
+- Redis sliding-window limiter (same interface as the in-memory one): one atomic Lua script on Redis's own clock, a blocking connection pool, fails open (logged) if Redis is down. Verified against real Redis 4 workers wide: exactly 20 of 80 calls admitted on a 20/min key. `REDIS_TEST_URL=redis://… pytest tests/test_redis_limiter.py` runs its tests (skipped otherwise).
 - Stripe Checkout, Billing Portal, webhook (`checkout.session.completed`, `customer.subscription.updated|deleted`, `invoice.payment_failed`): signature verified, event ids stored, idempotent; downgrade on cancel. Tested with signed fake events. **Not exercised against Stripe test mode yet.**
 - Alembic initial migration (`apps/api/migrations`), verified `upgrade head` on SQLite. Postgres not yet run.
 - `seed.py` for demo data. `.env.example` lists every variable.
@@ -63,7 +63,7 @@ Found by reading the public sign-in page: account.onenexora.com is a **Clerk pro
 - `GET /api/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&group=key|model|day[&format=csv]`: SQL aggregation (not row loading) of calls, blocked, errors, tokens in/out per key, model or UTC day, plus totals. Default: last 30 days. Range is inclusive, `from <= to`, max 366 days, 422 `invalid_range` otherwise. Org-scoped, viewer+.
 - Unattributed calls (playground, or a deleted key) are grouped under "Playground", never dropped, so totals always equal the sum of rows. Revoked keys keep their history and are marked.
 - CSV neutralises spreadsheet-formula injection (a key named `=HYPERLINK(...)` is exported as `'=HYPERLINK(...)`).
-- Postgres-safety: grouped by label (bind-parameter expressions repeated in GROUP BY are rejected by Postgres) and UTC day bucketing via `timezone('UTC', ts)`; compiled for the Postgres dialect but **not run against a real Postgres**.
+- Postgres-safety: grouped by label (bind-parameter expressions repeated in GROUP BY are rejected by Postgres) and UTC day bucketing via `timezone('UTC', ts)`; run against real Postgres 16: migrations, the full API suite, and a 4-worker burst (300 calls on a 100-call quota gave exactly 100 billable rows). Quota and provider-cap checks take a per-org row lock (`lock_org`: `SELECT … FOR UPDATE` on Postgres, a write on SQLite) and count exactly. Tests set `DB_DISABLE_POOL=1` (NullPool) because each test has its own event loop.
 - Web (`/app/usage`): By key / By model / By day, date range with 7/30/90-day presets, totals row, daily chart with empty days shown as gaps, CSV download, empty/error/invalid-range states.
 - Tests: 7 new (44 total): grouping, inclusive ranges, validation, org isolation, unattributed calls, CSV. Checked in the browser against seeded data.
 - Still no cost: token counts only. Usage reads `request_logs` plus the `usage_daily` rollups that retention writes (see Retention and deletion below), so history outlives log retention.

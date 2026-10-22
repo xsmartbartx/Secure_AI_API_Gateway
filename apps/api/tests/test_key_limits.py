@@ -94,8 +94,7 @@ async def test_token_limit_stops_the_key(client):
 async def test_concurrent_calls_cannot_overshoot_a_key_limit(client):
     k = await new_key(client, monthly_call_limit=3)
     codes = [r.status_code for r in await asyncio.gather(*[call(client, k) for _ in range(12)])]
-    assert codes.count(200) <= 3, codes
-    assert codes.count(200) >= 1
+    assert codes.count(200) == 3, codes
     assert set(codes) <= {200, 429}
 
 

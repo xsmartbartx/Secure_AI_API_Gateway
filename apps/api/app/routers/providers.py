@@ -3,11 +3,10 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import providers
-from app.db import ProviderConnection, get_session
+from app.db import ProviderConnection, get_session, lock_org
 from app.deps import Principal, require
 from app.errors import GatewayError
 from app.ratelimit import limiter
@@ -71,24 +70,17 @@ async def add_connection(body: ConnectionIn, p: Principal = Depends(require("adm
     if not await providers.check_credential(body.provider, body.api_key):  # never store a key the provider refuses
         raise GatewayError(422, "provider_rejected_key", f"{body.provider} rejected that API key. Check it and try again.")
 
-    # Everything read before the provider call may be stale by now. Insert first and let the database arbitrate: the
-    # partial unique index allows one default per org, so a concurrent first add that loses falls back to "not default".
-    def make(is_default: bool) -> ProviderConnection:
-        return ProviderConnection(org_id=p.org.id, provider=body.provider, label=body.label, hint=providers.hint_for(body.api_key),
-                                  credential_enc=b"", is_default=is_default, status="ok")
-    c = make(await _count(s, p.org.id) == 0)
-    try:
-        async with s.begin_nested():
-            s.add(c)
-            await s.flush()
-    except IntegrityError:
-        c = make(False)
-        s.add(c)
-        await s.flush()
-    if await _count(s, p.org.id) > MAX_CONNECTIONS:  # concurrent adds all passed the early check: the excess back out
-        await s.delete(c)
-        await s.commit()
+    # The provider call took a while, so anything read before it may be stale. Take the organization's lock, then count: concurrent
+    # adds run one at a time, so the cap and the single default are exact (the partial unique index stays as a backstop).
+    await lock_org(s, p.org.id)
+    count = await _count(s, p.org.id)
+    if count >= MAX_CONNECTIONS:
+        await s.rollback()
         raise GatewayError(409, "too_many_connections", f"You can store at most {MAX_CONNECTIONS} provider keys.")
+    c = ProviderConnection(org_id=p.org.id, provider=body.provider, label=body.label, hint=providers.hint_for(body.api_key),
+                           credential_enc=b"", is_default=count == 0, status="ok")
+    s.add(c)
+    await s.flush()
     c.credential_enc = providers.encrypt_credential(body.api_key, providers.aad_for(c))  # the id is part of the encryption context
     await s.commit()
     return _out(c)

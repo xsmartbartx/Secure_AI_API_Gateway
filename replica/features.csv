@@ -16,7 +16,7 @@ OpenAI-compatible /v1/chat/completions,api,should,no,yes,drop-in for SDKs
 Streaming (SSE),api,must,no,yes,"OpenAI-style chunks on /v1/chat, /v1/chat/completions and playground; Anthropic+OpenAI+mock adapters; tested incl. disconnect"
 JSON error envelope + request id,api,must,no,yes,
 Bearer key auth with hashed keys,api,must,partial,yes,
-Rate limiting in shared store (Redis),api,must,partial,partial,"Redis implementation written, untested vs real Redis"
+Rate limiting in shared store (Redis),api,must,done,done,"Atomic Lua script, verified against real Redis with 4 workers"
 Entitlement/quota enforcement,api,must,yes,yes,
 Audit logging (no raw prompt by default),api,must,yes,yes,
 Multi-provider routing (OpenAI/Anthropic/Azure OpenAI),api,should,no,partial,"per-org keys for Anthropic + OpenAI, choose by request `provider` or org default; no fallback/routing rules, no Azure OpenAI"
