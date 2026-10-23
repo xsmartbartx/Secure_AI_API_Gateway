@@ -63,7 +63,7 @@ async def _alert(org_id: str, month: str, kind: str, pct: int, used: int, limit:
             await s.commit()  # claim first: if two calls cross the threshold together, only one gets past this point
         except IntegrityError:
             return
-    ok, _ = await limiter.allow(f"alert:{org_id}:{kind}", 1)  # at most one delivery attempt a minute, even while the provider is down
+    ok, _ = await limiter.allow(f"alert:{org_id}:{kind}", 1, fail_open=False)  # at most one delivery attempt a minute, even while the provider or Redis is down
     reached = pct >= 100
     subject = f"NEXORA Gateway: you've used {pct}% of this month's calls" + (" (limit reached)" if reached else "")
     text = (f"Your organization \"{org.name}\" has used {used} of {limit} calls this month on the {org.plan} plan.\n\n"

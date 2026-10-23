@@ -10,7 +10,7 @@ log = logging.getLogger("gateway.ratelimit")
 
 
 class Limiter(Protocol):
-    async def allow(self, key: str, limit: int) -> tuple[bool, int]: ...
+    async def allow(self, key: str, limit: int, fail_open: bool = True) -> tuple[bool, int]: ...
 
 
 class MemorySlidingWindow:
@@ -20,7 +20,7 @@ class MemorySlidingWindow:
         self.window = window
         self.hits: dict[str, deque[float]] = defaultdict(deque)
 
-    async def allow(self, key: str, limit: int) -> tuple[bool, int]:  # NOSONAR: async to match the Limiter interface (the Redis limiter awaits)
+    async def allow(self, key: str, limit: int, fail_open: bool = True) -> tuple[bool, int]:  # NOSONAR: async to match the Limiter interface (the Redis limiter awaits)
         now = time.monotonic()
         q = self.hits[key]
         while q and now - q[0] >= self.window:
@@ -60,16 +60,23 @@ class RedisSlidingWindow:
         # A blocking pool waits briefly for a free connection instead of raising when a burst needs more than the pool holds.
         pool = redis.BlockingConnectionPool.from_url(url, max_connections=max_connections, timeout=2,
                                                      socket_timeout=2, socket_connect_timeout=2, health_check_interval=30)
+        self.pool = pool
         self.r = redis.Redis(connection_pool=pool)
         self.window = window
         self._script = self.r.register_script(_SLIDING_WINDOW_LUA)
 
-    async def allow(self, key: str, limit: int) -> tuple[bool, int]:
+    async def close(self) -> None:
+        """Close the client and the pool it was handed (a client does not own a pool passed in; redis-py 5 has close(), not aclose())."""
+        await self.r.close()
+        await self.pool.disconnect()
+
+    async def allow(self, key: str, limit: int, fail_open: bool = True) -> tuple[bool, int]:
+        """Admission fails open on a Redis error; callers that must stay bounded (alert delivery) pass fail_open=False."""
         try:
             ok, retry = await self._script(keys=[f"rl:{key}"], args=[self.window, limit, uuid.uuid4().hex])
         except Exception:  # RedisError, timeouts, a dropped connection
-            log.warning("rate limiter unavailable (Redis); allowing the call", exc_info=True)
-            return True, 0
+            log.warning("rate limiter unavailable (Redis); %s the call", "allowing" if fail_open else "denying", exc_info=True)
+            return (True, 0) if fail_open else (False, self.window)
         return bool(ok), int(retry)
 
 

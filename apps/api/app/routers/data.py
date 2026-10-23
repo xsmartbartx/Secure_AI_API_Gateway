@@ -142,6 +142,10 @@ async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, se
     org = await session.get(Organization, key.org_id)
     if await billable_this_month(key.org_id, s=session) >= org.monthly_call_quota:  # cheap early exit
         raise _quota_error()
+    if key.monthly_call_limit or key.monthly_token_limit:  # cheap early exit, no lock; _reserve re-checks under the org lock
+        calls, tokens = (await key_month_usage(session, key.org_id, key.id)).get(key.id, (0, 0))
+        if (early := _key_over(key, calls, tokens)) is not None:
+            raise early
     provider, credential, conn_id = await _resolve_upstream(session, key.org_id, body)
     body.model = body.model or DEFAULT_MODEL[provider]  # the effective model is what the policy judges
     policies = await policy.load_policies(session, key.org_id)

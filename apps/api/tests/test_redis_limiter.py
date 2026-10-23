@@ -19,7 +19,7 @@ async def limiter():
     await lim.r.flushdb()
     yield lim
     await lim.r.flushdb()
-    await lim.r.aclose()
+    await lim.close()
 
 
 async def test_a_parallel_burst_is_admitted_exactly_up_to_the_limit(limiter):
@@ -33,7 +33,7 @@ async def test_two_limiters_share_one_budget_like_two_workers(limiter):
         results = await asyncio.gather(*[(limiter if i % 2 else other).allow("k", 30) for i in range(120)])
         assert sum(ok for ok, _ in results) == 30
     finally:
-        await other.r.aclose()
+        await other.close()
 
 
 async def test_the_retry_hint_is_within_the_window(limiter):
@@ -58,7 +58,7 @@ async def test_the_window_slides(limiter):
         await asyncio.sleep(1.2)
         assert (await short.allow("k", 2))[0] is True
     finally:
-        await short.r.aclose()
+        await short.close()
 
 
 async def test_idle_keys_expire_so_redis_does_not_fill_up(limiter):
@@ -80,4 +80,12 @@ async def test_an_unreachable_redis_fails_open_quickly_instead_of_raising():
         assert await dead.allow("k", 5) == (True, 0)
         assert time.perf_counter() - t < 5
     finally:
-        await dead.r.aclose()
+        await dead.close()
+
+
+async def test_fail_closed_callers_are_denied_when_redis_is_down():
+    dead = RedisSlidingWindow("redis://127.0.0.1:1/0", window=60)
+    try:
+        assert await dead.allow("alert:o:k", 1, fail_open=False) == (False, 60)
+    finally:
+        await dead.close()
