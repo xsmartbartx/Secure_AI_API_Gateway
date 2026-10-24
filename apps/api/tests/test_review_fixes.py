@@ -108,8 +108,7 @@ async def test_concurrent_calls_cannot_exceed_the_quota(client):
         org.monthly_call_quota = 3
         await s.commit()
     codes = [r.status_code for r in await asyncio.gather(*[client.post("/v1/chat", json=BODY, headers=h) for _ in range(12)])]
-    assert codes.count(200) <= 3, codes
-    assert codes.count(200) >= 1
+    assert codes.count(200) == 3, codes     # exactly the room that was left, whatever the burst size
     assert set(codes) <= {200, 429}
     async with SessionLocal() as s:
         rows = (await s.execute(select(RequestLog.decision))).scalars().all()

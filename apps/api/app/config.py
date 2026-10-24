@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     ENV: str = "dev"  # dev | prod
     DATABASE_URL: str = "sqlite+aiosqlite:///./gateway.db"
+    DB_DISABLE_POOL: bool = False  # tests: each test has its own event loop, so connections must not be reused across tests
 
     # Upstream provider credentials (platform default; per-org vault comes later)
     ANTHROPIC_API_KEY: str = ""

@@ -44,7 +44,7 @@ Totals: 29 cases, 24 pass, 0 fail now, 5 blocked/not run.
 - Responsive: no horizontal scroll at 390px on 11 pages; dashboard menu opens, navigates, closes.
 - **Accessibility (axe-core, WCAG 2.0/2.1/2.2 A+AA + best practices):** 17 pages x light and dark, plus the dashboard with data (keys table, key-reveal banner, logs table, open drawer). A canary test plants violations and checks axe reports them, so a clean result is not vacuous. All clean after fixing B9.
 - Found by this suite and fixed: B6 (S2), B7 (S3), B8 (S2), B9 (S4).
-Not covered: real Clerk sign-in, real Stripe checkout, real Anthropic/OpenAI, real Postgres/Redis; screen-reader and manual keyboard review beyond what axe and the keyboard tests cover (axe finds roughly a third of accessibility problems); Safari/Firefox (Chrome only); visual regression.
+Not covered: real Clerk sign-in, real Stripe checkout, real Anthropic/OpenAI, Stripe test mode; screen-reader and manual keyboard review beyond what axe and the keyboard tests cover (axe finds roughly a third of accessibility problems); Safari/Firefox (Chrome only); visual regression.
 
 Update (providers): 69 browser tests now (added provider-key CRUD, developer read-only, axe on the providers page with keys); 78 API tests.
 

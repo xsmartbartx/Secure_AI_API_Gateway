@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.anthropic_adapter import AnthropicAdapter
@@ -17,7 +16,7 @@ from app.adapters.mock_adapter import MockAdapter
 from app.adapters.openai_adapter import OpenAIAdapter
 from app.config import settings
 from app import alerts, policy, providers
-from app.db import ApiKey, Organization, ProviderConnection, RequestLog, SecurityEvent, SessionLocal, get_session
+from app.db import ApiKey, Organization, ProviderConnection, RequestLog, SecurityEvent, SessionLocal, get_session, lock_org
 from app.deps import get_api_key
 from app.usage import billable_this_month, key_month_usage
 from app.errors import GatewayError
@@ -90,11 +89,12 @@ def _key_limit_error(what: str) -> GatewayError:
     return GatewayError(429, "key_limit_reached", f"This API key reached its monthly {what} limit.", {"Retry-After": "3600"})
 
 
-def _key_over(key: ApiKey, calls: int, tokens: int, *, reserved: bool) -> GatewayError | None:
-    """Per-key caps. `reserved` means this call is already counted in `calls`, so only going past the cap rejects it."""
-    if key.monthly_call_limit and (calls > key.monthly_call_limit if reserved else calls >= key.monthly_call_limit):
+def _key_over(key: ApiKey, calls: int, tokens: int) -> GatewayError | None:
+    """Per-key caps, checked before this call is counted. Tokens are only known after a call, so the token cap can be passed by
+    the call that crosses it (and by calls already in flight)."""
+    if key.monthly_call_limit and calls >= key.monthly_call_limit:
         return _key_limit_error("call")
-    if key.monthly_token_limit and tokens >= key.monthly_token_limit:  # tokens are only known afterwards, so this one is checked before, not reserved
+    if key.monthly_token_limit and tokens >= key.monthly_token_limit:
         return _key_limit_error("token")
     return None
 
@@ -142,11 +142,10 @@ async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, se
     org = await session.get(Organization, key.org_id)
     if await billable_this_month(key.org_id, s=session) >= org.monthly_call_quota:  # cheap early exit
         raise _quota_error()
-    limited = bool(key.monthly_call_limit or key.monthly_token_limit)
-    if limited:
+    if key.monthly_call_limit or key.monthly_token_limit:  # cheap early exit, no lock; _reserve re-checks under the org lock
         calls, tokens = (await key_month_usage(session, key.org_id, key.id)).get(key.id, (0, 0))
-        if (over := _key_over(key, calls, tokens, reserved=False)):
-            raise over
+        if (early := _key_over(key, calls, tokens)) is not None:
+            raise early
     provider, credential, conn_id = await _resolve_upstream(session, key.org_id, body)
     body.model = body.model or DEFAULT_MODEL[provider]  # the effective model is what the policy judges
     policies = await policy.load_policies(session, key.org_id)
@@ -165,26 +164,34 @@ async def _preflight(request: Request, body: UnifiedChatRequest, key: ApiKey, se
     if content.action == "block":
         raise await _block_by_policy(session, entry, content.events, GatewayError(403, "policy_violation", content.message), content.score)
     flagged = model_verdict.action == "flag" or content.action == "flag"
-    # Reserve first, then verify. The call is committed as "pending" before anything is sent upstream, so requests that run at
-    # the same time see each other; one that would take the org over its quota backs out. (Counting first and writing the
-    # row after the upstream answers let a burst of in-flight calls all read the same count.)
+    events = _model_events(model_verdict, body.model, "flagged") + content.events
+    used = await _reserve(session, key, org, entry, events)
+    alerts.schedule(alerts.maybe_alert(key.org_id, used, org.monthly_call_quota))
+    return Prepared(entry, credential, conn_id, flagged)
+
+
+async def _reserve(session: AsyncSession, key: ApiKey, org: Organization, entry: RequestLog, events: list[policy.EventSpec]) -> int:
+    """Take a slot for this call under the organization's quota and the key's limits, then commit the reservation as `pending`.
+
+    The check and the write happen while holding a row lock on the organization, so concurrent calls run through here one at a
+    time: every count sees every committed reservation, the quota is exact, and a burst larger than the remaining quota admits
+    exactly as many calls as there is room for (the others get 429). Returns the month's usage including this call."""
+    quota, org_id = org.monthly_call_quota, key.org_id
+    await lock_org(session, org_id)
+    used = await billable_this_month(org_id, s=session)
+    over = _quota_error() if used >= quota else None
+    if over is None and (key.monthly_call_limit or key.monthly_token_limit):
+        calls, tokens = (await key_month_usage(session, org_id, key.id)).get(key.id, (0, 0))
+        over = _key_over(key, calls, tokens)
+    if over is not None:
+        await session.rollback()  # ends the transaction and releases the lock
+        raise over
     session.add(entry)
     await session.flush()
     session.add_all(SecurityEvent(org_id=entry.org_id, log_id=entry.id, type=e.type, severity=e.severity, rule_id=e.rule_id, redacted_excerpt=e.excerpt)
-                    for e in _model_events(model_verdict, body.model, "flagged") + content.events)
+                    for e in events)
     await session.commit()
-    used = await billable_this_month(key.org_id, s=session)
-    over = _quota_error() if used > org.monthly_call_quota else None
-    if over is None and limited:
-        calls, tokens = (await key_month_usage(session, key.org_id, key.id)).get(key.id, (0, 0))
-        over = _key_over(key, calls, tokens, reserved=True)
-    if over is not None:  # another call got in first: back out the reservation
-        await session.execute(delete(SecurityEvent).where(SecurityEvent.log_id == entry.id))
-        await session.delete(entry)
-        await session.commit()
-        raise over
-    alerts.schedule(alerts.maybe_alert(key.org_id, used, org.monthly_call_quota))
-    return Prepared(entry, credential, conn_id, flagged)
+    return used + 1
 
 
 async def _chat(request: Request, body: UnifiedChatRequest, key: ApiKey, session: AsyncSession, track_key: bool = True) -> UnifiedChatResponse:

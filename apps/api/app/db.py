@@ -2,12 +2,16 @@ import datetime as dt
 import uuid
 
 from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, TypeDecorator, UniqueConstraint, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
-engine = create_async_engine(settings.DATABASE_URL, future=True)
+# pool_pre_ping: managed Postgres (Neon, Supabase) closes idle connections; check one is alive before handing it out
+engine = create_async_engine(settings.DATABASE_URL, future=True, pool_pre_ping=True,
+                             **({"poolclass": NullPool} if settings.DB_DISABLE_POOL else {}))
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -182,6 +186,21 @@ class UsageDaily(Base):
     tokens_in: Mapped[int] = mapped_column(BigInteger, default=0)
     tokens_out: Mapped[int] = mapped_column(BigInteger, default=0)
     __table_args__ = (Index("ix_usage_daily_org_day", "org_id", "day"),)
+
+
+async def lock_org(session: AsyncSession, org_id: str) -> None:
+    """Start a serialised section for one organization: concurrent callers wait here, one at a time, until the holder's
+    transaction ends (commit or rollback). A count read after this point sees every committed reservation.
+
+    It first commits whatever transaction the session has open (a no-op for a read-only one; loaded objects stay usable), so
+    the lock is the first statement of a fresh transaction. Postgres takes a row lock (`SELECT ... FOR UPDATE`). SQLite has no
+    row locks, so a no-op UPDATE takes its single write lock instead; doing that after reads in the same transaction would
+    deadlock, which is why the transaction is restarted."""
+    await session.commit()
+    if engine.dialect.name == "sqlite":
+        await session.execute(update(Organization).where(Organization.id == org_id).values(id=Organization.id))
+    else:
+        await session.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
 
 
 async def init_db() -> None:

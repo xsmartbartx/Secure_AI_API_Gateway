@@ -15,7 +15,7 @@ Not shippable yet: 6 must-have features are not done.
 ## Missing, in build order
 - [must] platform: NEXORA to Gateway redirect + SSO handoff, no  (Open Gateway -> /app)
 - [must] site: Docs quickstart + API reference, no  (docs.onenexora.com exists)
-- [must] api: Rate limiting in shared store (Redis), partial  (Redis implementation written, untested vs real Redis)
+- [must] api: Rate limiting in shared store (Redis), done  (atomic Lua script, verified vs real Redis)
 - [must] billing: Billing + upgrade (Stripe), partial  (checkout/portal/webhooks coded + tested with signed fakes; needs Stripe test keys)
 - [must] dashboard: Usage and cost per key/model, partial  (by model only; no cost, no per-key)
 - [must] legal: Terms/Privacy/DPA reviewed by lawyer, partial  (draft placeholder pages)

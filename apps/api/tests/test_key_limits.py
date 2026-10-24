@@ -82,6 +82,17 @@ async def test_call_limit_stops_the_key_and_leaves_others_alone(client):
     assert (await call(client, free)).status_code == 200
 
 
+async def test_an_over_limit_key_gets_429_before_any_policy_work(client):
+    k = await new_key(client, monthly_call_limit=1)
+    assert (await call(client, k)).status_code == 200
+    r = await client.put("/api/policies/model_allow", json={"mode": "enforce", "models": ["nothing-*"]}, headers=OWNER)
+    assert r.status_code == 200, r.text
+    r = await call(client, k)
+    assert r.status_code == 429 and r.json()["error"]["code"] == "key_limit_reached"   # not a 403 from the model policy
+    async with SessionLocal() as s:
+        assert (await s.execute(select(func.count()).select_from(RequestLog).where(RequestLog.decision == "block"))).scalar_one() == 0
+
+
 async def test_token_limit_stops_the_key(client):
     k = await new_key(client, monthly_token_limit=5)
     assert (await call(client, k)).status_code == 200          # the mock reports about six tokens for this call, so the next one is over
@@ -94,8 +105,7 @@ async def test_token_limit_stops_the_key(client):
 async def test_concurrent_calls_cannot_overshoot_a_key_limit(client):
     k = await new_key(client, monthly_call_limit=3)
     codes = [r.status_code for r in await asyncio.gather(*[call(client, k) for _ in range(12)])]
-    assert codes.count(200) <= 3, codes
-    assert codes.count(200) >= 1
+    assert codes.count(200) == 3, codes
     assert set(codes) <= {200, 429}
 
 
