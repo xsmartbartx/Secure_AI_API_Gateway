@@ -21,7 +21,7 @@
 
 ## Blockers to clear first (in order)
 1. NEXORA SSO handoff: code done (see backend.md). Left: allow `https://gateway.onenexora.com` in Clerk, set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, run one real sign-in on a preview deploy, change the NEXORA Gateway card CTA.
-2. Run against real Postgres (Neon) + Redis (Upstash) + Stripe **test** mode; fix what breaks.
+2. ~~Postgres + Redis~~ verified against real Postgres 16 and Redis (migrations, API suite, 4-worker bursts; PR 5). Left: a Stripe **test** mode pass (checkout, portal, webhook) with your `sk_test_` key and webhook secret, and a smoke run on Neon/Upstash themselves.
 3. ~~Playwright e2e + axe scan~~ done (F07 SSO handoff still needs a real sign-in on a preview).
 4. Legal pages reviewed + processors list. (Account deletion and retention purge are built; add the Clerk webhook `/webhooks/account` + `ACCOUNT_WEBHOOK_SECRET`.)
 5. Logo/favicon/OG; decide pricing tiers (see launch/pricing.md); real docs at docs.onenexora.com.
