@@ -4,7 +4,7 @@ import { ReactNode } from 'react'
 export function MarketingShell({ children }: Readonly<{ children: ReactNode }>) {
   return <>
     <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:bg-bg focus:p-2">Skip to content</a>
-    <header className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
       <div className="mx-auto flex h-12 max-w-marketing items-center justify-between px-4">
         <Link href="/" className="font-semibold tracking-tight">NEXORA <span className="font-normal text-text-muted">Gateway</span></Link>
         <nav aria-label="Primary" className="flex items-center gap-5 text-sm">

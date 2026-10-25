@@ -9,7 +9,7 @@ export type ModeOption = { value: Mode; label: string; help: string }
 export function ModeFieldset({ name, value, onChange, options, disabled }: Readonly<{ name: string; value: Mode; onChange: (m: Mode) => void; options: ModeOption[]; disabled: boolean }>) {
   return <fieldset disabled={disabled} className="space-y-2">
     <legend className="mb-1 text-sm font-medium">Mode</legend>
-    {options.map(o => <label key={o.value} className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-subtle">
+    {options.map(o => <label key={o.value} className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 has-checked:border-accent has-checked:bg-accent-subtle">
       <input type="radio" name={name} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} className="mt-1" />
       <span><span className="block font-medium">{o.label}</span><span className="block text-sm text-text-muted">{o.help}</span></span></label>)}
   </fieldset>
