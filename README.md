@@ -18,6 +18,15 @@ replica/   product planning: recon, architecture, schema, design tokens, test pl
 (cd apps/web && npm install && npm run dev)           # http://localhost:3000 (uses .env.local, see .env.example)
 ```
 Tests: `cd apps/api && .venv/bin/python -m pytest -q` (212 tests; Redis limiter tests also run with `REDIS_TEST_URL`).
+Tests against real services (optional, skipped when unset):
+```bash
+# Redis limiter tests: any throwaway Redis
+REDIS_TEST_URL=redis://127.0.0.1:6379/15 .venv/bin/python -m pytest tests/test_redis_limiter.py
+
+# Whole API suite on Postgres instead of SQLite
+DATABASE_URL=postgresql+asyncpg://postgres:<password>@127.0.0.1:5432/gateway_test .venv/bin/python -m pytest -q
+```
+Tests set `DB_DISABLE_POOL=1` (a connection pool is bound to one event loop, and each test has its own). Quota, key-limit and provider-cap checks run under a per-organization lock (`lock_org` in `app/db.py`), so parallel calls and workers cannot overshoot; leave `DB_DISABLE_POOL` unset in production.
 Browser tests (Playwright, real Chrome) and accessibility scans (axe): `cd apps/web && npm run e2e` (starts its own API and web server on ports 8411/3411).
 CI (`.github/workflows/ci.yml`) runs all of this on every pull request and on pushes to `main`: API lint, tests, migrations (up, check, down) and `pip-audit` on Python 3.11 and 3.12; web typecheck, build and `npm audit`; and the browser suite.
 With no upstream key set, dev mode answers from a built-in mock so the full loop works offline. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for a real provider.
