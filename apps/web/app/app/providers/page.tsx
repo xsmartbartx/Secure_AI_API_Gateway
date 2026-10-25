@@ -51,7 +51,7 @@ export default function Providers() {
             <option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></div>
         <div className="min-w-40 flex-1"><label htmlFor="plabel" className="mb-1 block text-sm font-medium">Name</label>
           <input id="plabel" required maxLength={60} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. production" className="h-10 w-full rounded-md border border-border-input bg-bg px-3" /></div>
-        <div className="min-w-60 flex-[2]"><label htmlFor="pkey" className="mb-1 block text-sm font-medium">API key</label>
+        <div className="min-w-60 flex-2"><label htmlFor="pkey" className="mb-1 block text-sm font-medium">API key</label>
           <input id="pkey" required type="password" autoComplete="off" spellCheck={false} minLength={12} maxLength={400} value={apiKey} onChange={e => setApiKey(e.target.value)} className="h-10 w-full rounded-md border border-border-input bg-bg px-3 font-mono" /></div>
         <Button type="submit" loading={busy === 'add'}>Verify and save</Button>
       </form>
