@@ -1,0 +1,82 @@
+# NEXORA Gateway on the shared OCI host, as its own compose project (like OmniFlow, Vigilo and NeuraWall).
+# No port is published: the shared Caddy (NEXORA repo, infrastructure/edge) joins `gateway_default` and proxies
+# GATEWAY_WEB_HOST -> gateway-web-1:3000 and GATEWAY_API_HOST -> gateway-api-1:8000.
+#
+#   cd /opt/gateway && cp deploy/.env.prod.example deploy/.env.prod   # then fill it in on the server; never commit it
+#   sudo docker compose --env-file deploy/.env.prod -f deploy/compose.prod.yml up -d --build
+name: gateway
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gateway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - gateway-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gateway"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-ttl"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # One-shot release step: schema migrations before the API starts.
+  migrate:
+    build: ../apps/api
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment: &api-env
+      ENV: prod
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/gateway
+      REDIS_URL: redis://redis:6379/0
+      AUTH_JWKS_URL: ${AUTH_JWKS_URL:?set AUTH_JWKS_URL}
+      AUTH_ISSUER: ${AUTH_ISSUER:?set AUTH_ISSUER}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?set CREDENTIAL_ENCRYPTION_KEY}
+      CORS_ORIGINS: https://${GATEWAY_WEB_HOST}
+      APP_URL: https://${GATEWAY_WEB_HOST}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ACCOUNT_WEBHOOK_SECRET: ${ACCOUNT_WEBHOOK_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_STARTER: ${STRIPE_PRICE_STARTER:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      ALERT_FROM_EMAIL: ${ALERT_FROM_EMAIL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: ../apps/api
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../apps/web
+      args:
+        NEXT_PUBLIC_API_BASE: https://${GATEWAY_API_HOST}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:?set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_SIGN_IN_URL: ${NEXT_PUBLIC_SIGN_IN_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - api
+
+volumes:
+  gateway-postgres-data:
