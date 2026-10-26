@@ -66,4 +66,6 @@ This product runs as its own compose project, like OmniFlow, Vigilo and NeuraWal
 - Hostnames: `gateway-next.onenexora.com` (web) and `gateway-next-api.onenexora.com` (API). Both need an **A record to 92.5.69.99** before Caddy can get certificates.
 - Start: `sudo docker compose --env-file deploy/.env.prod -f deploy/compose.prod.yml up -d --build` (builds, runs `alembic upgrade head`, then starts API and web). Edge: `deploy.sh edge` after the NEXORA edge PR is merged.
 - Later deploys: `deploy.sh gateway api web` (NEXORA repo, `infrastructure/deployment/deploy.sh`).
+- Scripts (run from your Mac; `<key>` is your OCI SSH key). Step 1: `ssh -i <key> opc@92.5.69.99 'bash -s' < deploy/oci-first-deploy.sh` clones, generates the env file once, builds and starts the stack; safe to rerun. Step 2: `ssh -i <key> opc@92.5.69.99 'bash -s' < deploy/oci-edge-step.sh` checks the Docker networks, saves any local Caddyfile edit to `~/Caddyfile.local-*.diff`, pulls NEXORA main, validates, recreates Caddy once and checks the hostnames.
+- Deployed 2026-10-26: `gateway-next.onenexora.com` and `gateway-next-api.onenexora.com` answer 200; existing sites unaffected.
 - Verified locally: both images build, migrations apply on a fresh Postgres, API `/v1/health` answers, web returns 200.
