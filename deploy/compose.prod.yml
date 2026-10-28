@@ -43,8 +43,9 @@ services:
       AUTH_JWKS_URL: ${AUTH_JWKS_URL:?set AUTH_JWKS_URL}
       AUTH_ISSUER: ${AUTH_ISSUER:?set AUTH_ISSUER}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?set CREDENTIAL_ENCRYPTION_KEY}
-      CORS_ORIGINS: https://${GATEWAY_WEB_HOST}
-      APP_URL: https://${GATEWAY_WEB_HOST}
+      # the product is served at GATEWAY_PUBLIC_HOST (default gateway.onenexora.com) and also at GATEWAY_WEB_HOST
+      CORS_ORIGINS: https://${GATEWAY_PUBLIC_HOST:-gateway.onenexora.com},https://${GATEWAY_WEB_HOST}
+      APP_URL: https://${GATEWAY_PUBLIC_HOST:-gateway.onenexora.com}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ACCOUNT_WEBHOOK_SECRET: ${ACCOUNT_WEBHOOK_SECRET:-}
