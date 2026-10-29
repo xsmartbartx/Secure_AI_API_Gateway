@@ -58,14 +58,17 @@ When blockers 1-4 are done I'll re-run this preflight; deploy only after you say
 ## CI
 `.github/workflows/ci.yml`: API (lint, 93 tests, migrations up/check/down, pip-audit; Python 3.11 and 3.12), web (tsc, build, npm audit; Node 22), browser and axe suite (75 tests, real Chrome on the runner). Read-only token (`contents: read`), `pull_request` rather than `pull_request_target`, no secrets, concurrent runs cancelled. A dry run from a clean copy of the tree with `npm ci` and `CI=1` was green. **Not yet run on GitHub**, and Python 3.12 and Node 22 are untested locally (3.11 and 26 were used). Make the three jobs required checks in branch protection once they pass. Actions are pinned to major versions, not commit SHAs.
 
-## OCI host (nexora-platform, 92.5.69.99): beside the live gateway
-This product runs as its own compose project, like OmniFlow, Vigilo and NeuraWall, next to the existing `apps/gateway` of the NEXORA monorepo. Nothing in the NEXORA compose file changes; its shared Caddy (`infrastructure/edge`) joins this project's `gateway_default` network.
+## OCI host (nexora-platform, 92.5.69.99)
+This product runs as its own compose project, like OmniFlow, Vigilo and NeuraWall. Since 2026-10-28 it is served at **`gateway.onenexora.com`** (with `gateway-next.onenexora.com` kept as an alias), replacing the monorepo `apps/gateway`, whose container is still running but unrouted for rollback. Nothing in the NEXORA compose file changed; its shared Caddy (`infrastructure/edge`) joins this project's `gateway_default` network.
+
+Rollback: point the `gateway.onenexora.com` block in NEXORA's `infrastructure/edge/Caddyfile` back at `nexora-gateway-1:3009` and run `deploy.sh edge`. Once confident, stop the old container to free its memory.
 
 - Code: `git clone https://github.com/xsmartbartx/Secure_AI_API_Gateway.git /opt/gateway`
 - Secrets: `cp deploy/.env.prod.example deploy/.env.prod` and fill it in on the server (never committed). `CREDENTIAL_ENCRYPTION_KEY` needs a copy in a password manager.
-- Hostnames: `gateway-next.onenexora.com` (web) and `gateway-next-api.onenexora.com` (API). Both need an **A record to 92.5.69.99** before Caddy can get certificates.
+- Hostnames: `gateway.onenexora.com` (web, canonical) and `gateway-next.onenexora.com` (alias), `gateway-next-api.onenexora.com` (API, baked into the web build as `NEXT_PUBLIC_API_BASE`). Each needs an **A record to 92.5.69.99** before Caddy can get certificates. The API allows the browser origin `gateway.onenexora.com` and uses it for `APP_URL` (`GATEWAY_PUBLIC_HOST` overrides).
 - Start: `sudo docker compose --env-file deploy/.env.prod -f deploy/compose.prod.yml up -d --build` (builds, runs `alembic upgrade head`, then starts API and web). Edge: `deploy.sh edge` after the NEXORA edge PR is merged.
 - Later deploys: `deploy.sh gateway api web` (NEXORA repo, `infrastructure/deployment/deploy.sh`).
 - Scripts (run from your Mac; `<key>` is your OCI SSH key). Step 1: `ssh -i <key> opc@92.5.69.99 'bash -s' < deploy/oci-first-deploy.sh` clones, generates the env file once, builds and starts the stack; safe to rerun. Step 2: `ssh -i <key> opc@92.5.69.99 'bash -s' < deploy/oci-edge-step.sh` checks the Docker networks, saves any local Caddyfile edit to `~/Caddyfile.local-*.diff`, pulls NEXORA main, validates, recreates Caddy once and checks the hostnames.
-- Deployed 2026-10-26: `gateway-next.onenexora.com` and `gateway-next-api.onenexora.com` answer 200; existing sites unaffected.
+- Deployed 2026-10-26: `gateway-next.onenexora.com` and `gateway-next-api.onenexora.com` answered 200; existing sites unaffected.
+- Switched 2026-10-28: `gateway.onenexora.com` serves this product; the NEXORA status page, control center and product registry use the new API health URL (`https://gateway-next-api.onenexora.com/v1/health`). Checked from outside: `/`, `/app`, `/pricing` 200, CORS preflight from the new host allowed, status page shows Gateway operational. Not yet verified: a real sign-in on the new host.
 - Verified locally: both images build, migrations apply on a fresh Postgres, API `/v1/health` answers, web returns 200.
