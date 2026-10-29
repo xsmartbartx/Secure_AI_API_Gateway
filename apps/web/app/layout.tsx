@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://gateway.onenexora.com'),
   title: { default: 'NEXORA Gateway', template: '%s · NEXORA Gateway' },
   description: 'One governed entry point for every model call your organization makes.',
 }
