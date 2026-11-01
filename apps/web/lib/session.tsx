@@ -6,7 +6,9 @@ import { setTokenGetter } from './api'
 // Shared NEXORA account login (Clerk). gateway.onenexora.com is a subdomain of the account's primary domain,
 // so the account session is shared; we only need the public publishable key, no secret key in this app.
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? ''
-const SIGN_IN_URL = process.env.NEXT_PUBLIC_SIGN_IN_URL ?? 'https://account.onenexora.com/sign-in'
+// `||`, not `??`: the production compose file passes an unset value as an empty string, which `??` would keep and
+// send signed-out visitors back to this same page in a redirect loop.
+const SIGN_IN_URL = process.env.NEXT_PUBLIC_SIGN_IN_URL || 'https://account.onenexora.com/sign-in'
 const DEV_AUTH = process.env.NEXT_PUBLIC_DEV_AUTH === '1'
 
 type Session = { email: string; signOut: () => void }
