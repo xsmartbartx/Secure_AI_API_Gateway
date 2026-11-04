@@ -12,6 +12,7 @@
   --color-accent: var(--color-accent);
   --color-accent-hover: var(--color-accent-hover);
   --color-on-accent: var(--color-on-accent);
+  --color-link: var(--color-link);
   --color-accent-subtle: var(--color-accent-subtle);
   --color-danger: var(--color-danger);
   --color-danger-subtle: var(--color-danger-subtle);
@@ -63,3 +64,18 @@ body { background: var(--color-bg); color: var(--color-text); font-family: var(-
 .skeleton { background: var(--color-surface); border-radius: 6px; }
 @media (prefers-reduced-motion: no-preference) { .skeleton { background: linear-gradient(90deg, var(--color-surface), var(--color-border), var(--color-surface)); background-size: 200% 100%; animation: sk 1.4s infinite; } }
 @keyframes sk { to { background-position: -200% 0; } }
+
+/* Clerk's native CSS variables, so its components use the same palette in light and dark. */
+:root {
+  --clerk-color-primary: var(--color-accent);
+  --clerk-color-primary-foreground: var(--color-on-accent);
+  --clerk-color-background: var(--color-surface-raised);
+  --clerk-color-foreground: var(--color-text);
+  --clerk-color-muted-foreground: var(--color-text-muted);
+  --clerk-color-neutral: var(--color-text);
+  --clerk-color-border: var(--color-border);
+  --clerk-color-input: var(--color-bg);
+  --clerk-color-input-foreground: var(--color-text);
+  --clerk-color-danger: var(--color-danger);
+  --clerk-border-radius: var(--radius-md);
+}

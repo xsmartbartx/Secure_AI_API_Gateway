@@ -60,7 +60,7 @@ export default function Team() {
       <Card className="p-6">
         <h2 className="font-semibold">Adding people</h2>
         <p className="mt-2 text-text-muted">Invite teammates to your organization from your NEXORA account. They appear here the first time they open Gateway, with a role based on their account role that an owner can change.</p>
-        <a href="https://account.onenexora.com" className="mt-3 inline-block text-sm font-semibold text-accent">Open NEXORA account →</a>
+        <a href="https://account.onenexora.com" className="mt-3 inline-block text-sm font-semibold text-link">Open NEXORA account →</a>
       </Card>
       <Card className="p-6">
         <h2 className="font-semibold">Roles</h2>

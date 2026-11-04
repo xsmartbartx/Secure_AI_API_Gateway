@@ -64,7 +64,7 @@ export default function Providers() {
       {error && <ErrorState message={error.message} onRetry={reload} />}
       {data?.items.length === 0 && <Empty title="No provider keys yet" help="Until you add one, calls go through the shared provider NEXORA configures." />}
       {data && data.items.length > 0 && <ul className="divide-y divide-border">{data.items.map(c => <li key={c.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
-        <div className="min-w-48 flex-1"><p className="font-medium">{c.label}{c.is_default && <span className="ml-2 rounded bg-accent-subtle px-1.5 py-0.5 text-xs font-medium text-accent">Default</span>}</p>
+        <div className="min-w-48 flex-1"><p className="font-medium">{c.label}{c.is_default && <span className="ml-2 rounded bg-accent-subtle px-1.5 py-0.5 text-xs font-medium text-link">Default</span>}</p>
           <p className="text-sm text-text-muted">{NAMES[c.provider]} · <span className="font-mono">{c.hint}</span></p></div>
         <Status s={c.status} />
         {canEdit && <div className="flex gap-2">
