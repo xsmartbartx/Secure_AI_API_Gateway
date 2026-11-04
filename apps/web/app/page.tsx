@@ -10,12 +10,12 @@ const sample = String.raw`curl https://api.onenexora.com/v1/chat \
 export default function Home() {
   return <MarketingShell>
     <Section className="pb-12 pt-28 text-center">
-      <p className="mb-4 text-sm font-medium text-accent">Beta</p>
+      <p className="mb-4 text-sm font-medium text-link">Beta</p>
       <h1 className="mx-auto max-w-3xl text-[44px] font-bold leading-[1.05] tracking-tight sm:text-[64px] sm:leading-[68px]">Govern every model call. Install nothing.</h1>
       <p className="mx-auto mt-6 max-w-prose text-base text-text-muted sm:text-lg">NEXORA Gateway is a hosted door in front of your model provider. Your apps call one endpoint with one key. Every request is authenticated, limited, and logged, and there is no package to install, patch, or trust inside your own stack.</p>
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-        <Link href="/app" className="inline-flex h-12 items-center rounded-md bg-accent px-6 text-base font-semibold text-on-accent hover:bg-accent-hover">Open Gateway</Link>
-        <a href="https://docs.onenexora.com/products" className="text-base font-semibold text-accent">Read the quickstart →</a>
+        <Link href="/app" className="inline-flex h-11 items-center rounded-md bg-accent px-5 text-sm font-medium text-on-accent shadow-sm hover:bg-accent-hover">Open Gateway</Link>
+        <a href="https://docs.onenexora.com/products" className="text-base font-semibold text-link">Read the quickstart →</a>
       </div>
     </Section>
     <Section className="pt-0"><div className="mx-auto max-w-prose"><CodeBlock label="Your first governed call" code={sample} /></div></Section>
@@ -51,7 +51,7 @@ export default function Home() {
     </Section>
     <Section className="text-center">
       <h2 className="text-[40px] font-bold leading-[44px] tracking-tight">Make your first call in minutes.</h2>
-      <div className="mt-8"><Link href="/app" className="inline-flex h-12 items-center rounded-md bg-accent px-6 text-base font-semibold text-on-accent hover:bg-accent-hover">Open Gateway</Link></div>
+      <div className="mt-8"><Link href="/app" className="inline-flex h-11 items-center rounded-md bg-accent px-5 text-sm font-medium text-on-accent shadow-sm hover:bg-accent-hover">Open Gateway</Link></div>
     </Section>
   </MarketingShell>
 }

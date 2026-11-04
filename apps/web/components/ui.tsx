@@ -6,10 +6,10 @@ const cx = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(' ')
 
 export function Button({ variant = 'primary', size = 'md', loading, className, children, ...p }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'lg'; loading?: boolean }) {
-  const v = { primary: 'bg-accent text-on-accent hover:bg-accent-hover', secondary: 'border border-border-input bg-bg text-text hover:bg-surface', ghost: 'text-text hover:bg-surface', danger: 'bg-danger text-bg hover:opacity-90' }[variant]
-  const s = { sm: 'h-8 px-3 text-sm', md: 'h-10 px-4 text-sm', lg: 'h-12 px-6 text-base' }[size]
+  const v = { primary: 'bg-accent text-on-accent shadow-sm hover:bg-accent-hover', secondary: 'border border-border-input bg-bg text-text hover:bg-surface', ghost: 'text-text hover:bg-surface', danger: 'bg-danger text-bg hover:opacity-90' }[variant]
+  const s = { sm: 'h-8 px-3 text-sm', md: 'h-9 px-4 text-sm', lg: 'h-11 px-5 text-sm' }[size]
   return <button {...p} aria-busy={loading || undefined} disabled={p.disabled || loading}
-    className={cx('inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed', v, s, className)}>
+    className={cx('inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed', v, s, className)}>
     {loading && <span className="h-4 w-4 animate-spin motion-reduce:animate-none rounded-full border-2 border-current border-t-transparent" aria-hidden />}{children}</button>
 }
 
@@ -47,7 +47,7 @@ export function CodeBlock({ code, label }: Readonly<{ code: string; label?: stri
       className="absolute right-2 top-2 rounded p-2 text-nav-text hover:text-nav-active">{done ? <Check size={16} /> : <Copy size={16} />}</button></div>
 }
 
-export function Th({ children }: Readonly<{ children: ReactNode }>) { return <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">{children}</th> }
+export function Th({ children }: Readonly<{ children: ReactNode }>) { return <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-text-muted">{children}</th> }
 export const Td = ({ children, className }: { children: ReactNode; className?: string }) => <td className={cx('px-4 py-3', className)}>{children}</td>
 
 const METER_TONE = {
