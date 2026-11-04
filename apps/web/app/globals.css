@@ -1,5 +1,12 @@
-@import './tokens.css' layer(base);
+/*
+  Tailwind first, so its `@layer theme, base, components, utilities;` statement fixes the
+  layer order. Importing tokens.css first made `base` the first layer declared, so the
+  theme layer (which @theme inline fills with `--color-bg: var(--color-bg)` and the like)
+  came later and won: every token resolved to a self-reference, which is invalid, and the
+  page lost all its colours, radii and fonts.
+*/
 @import 'tailwindcss';
+@import './tokens.css' layer(base);
 
 @theme inline {
   --color-bg: var(--color-bg);
